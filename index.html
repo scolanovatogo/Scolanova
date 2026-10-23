@@ -322,7 +322,7 @@ let db,tab="menu",cur=null,q="",fc="",tmp=null,fillM=()=>{};
 const nextName=n=>{const k=db.classes.filter(c=>c.niveau===n).length;return cyc(n)===1?n+String.fromCharCode(65+k):n+(k+1)};
 function seed(){return{seq:1,classes:[],matieres:[],profs:[],eleves:[],notes:[],etab:etabDef()}}
 function load(){try{const r=localStorage.getItem(LS);if(r)return JSON.parse(r)}catch(e){}return seed()}
-function save(){try{localStorage.setItem(LS,JSON.stringify(db))}catch(e){}if(ENS&&!ensBusy)ensPush();else if(!ENS&&db&&db.sync&&db.sync.key&&DB_URL&&window.licOK&&window.licOK())autoRef()}
+function save(){try{const ln=window.licName&&window.licName();if(ln&&db&&db.etab&&db.etab.nom!==ln)db.etab.nom=ln}catch(e){}try{localStorage.setItem(LS,JSON.stringify(db))}catch(e){}if(ENS&&!ensBusy)ensPush();else if(!ENS&&db&&db.sync&&db.sync.key&&DB_URL&&window.licOK&&window.licOK())autoRef()}
 const OUTPUT_TABS=new Set(["bulletin","stats","examen","emploi","listes"]);
 function requireLicensedOutput(feature){
   if(typeof ENS!=="undefined"&&ENS)return true;
@@ -571,8 +571,8 @@ async function dlPDF(C,all){
   catch(e){m(e&&e.code==="declined"?"Téléchargement annulé.":"Le PDF n’a pas pu être enregistré.")}
 }
 function renderAccueil(){
- const L=$("#list"),E=db.etab;L.classList.add("plain");$("#tools").innerHTML="";
- L.innerHTML=`<li class="bul" style="padding:14px 16px 16px"><div class="s">Ces informations s’affichent automatiquement sur tous les bulletins.</div>${ETAB.map(f=>`<label>${f[1]}</label>${["ministere","direction","inspection"].includes(f[0])?`<textarea id="a_${f[0]}" rows="2" style="width:100%">${esc(E[f[0]]||"")}</textarea>`:`<input id="a_${f[0]}" ${f[0]==="dateConseil"?'type="date" ':""}value="${esc(E[f[0]]||"")}">`}`).join("")}<label>Logo de l’établissement</label><div>${E.logo?`<img src="${E.logo}" alt="Logo" style="max-height:80px">`:'<div class="s">Aucun logo : déposez une image ci-dessous.</div>'}</div><input type="file" id="lgf" accept="image/*"><button type="button" class="btnline" id="lgx" style="margin-top:8px" ${E.logo?"":"hidden"}>Retirer le logo</button><div class="s" style="margin-top:12px">Accès : <b id="lic_st"></b></div><div class="btns"><button type="button" class="ok" id="asv">Enregistrer</button></div><div class="s" id="amsg" role="status" style="margin-top:8px"></div></li>`;
+ const LK=(window.licApplyName?(window.licApplyName(),window.licName()):""),L=$("#list"),E=db.etab;L.classList.add("plain");$("#tools").innerHTML="";
+ L.innerHTML=`<li class="bul" style="padding:14px 16px 16px"><div class="s">Ces informations s’affichent automatiquement sur tous les bulletins.</div>${ETAB.map(f=>`<label>${f[1]}</label>${["ministere","direction","inspection"].includes(f[0])?`<textarea id="a_${f[0]}" rows="2" style="width:100%">${esc(E[f[0]]||"")}</textarea>`:`<input id="a_${f[0]}" ${f[0]==="dateConseil"?'type="date" ':""}${f[0]==="nom"&&LK?'readonly aria-readonly="true" style="opacity:.75" ':""}value="${esc(E[f[0]]||"")}">`}${f[0]==="nom"&&LK?'<div class="s">🔒 Nom verrouillé : il vient de l’accès activé et s’affiche sur tous les documents.</div>':""}`).join("")}<label>Logo de l’établissement</label><div>${E.logo?`<img src="${E.logo}" alt="Logo" style="max-height:80px">`:'<div class="s">Aucun logo : déposez une image ci-dessous.</div>'}</div><input type="file" id="lgf" accept="image/*"><button type="button" class="btnline" id="lgx" style="margin-top:8px" ${E.logo?"":"hidden"}>Retirer le logo</button><div class="s" style="margin-top:12px">Accès : <b id="lic_st"></b></div><div class="btns"><button type="button" class="ok" id="asv">Enregistrer</button></div><div class="s" id="amsg" role="status" style="margin-top:8px"></div></li>`;
  ETAB.forEach(f=>{const i=$("#a_"+f[0]);if(i)i.oninput=()=>{db.etab[f[0]]=i.value.trim();save();const m=$("#amsg");if(m)m.textContent="Enregistré. Les bulletins sont à jour."}});if($("#lic_st"))$("#lic_st").textContent=window.licInfo?window.licInfo():"";
   $("#asv").onclick=()=>{ETAB.forEach(f=>{db.etab[f[0]]=$("#a_"+f[0]).value.trim()});save();$("#amsg").textContent="Enregistré. Les bulletins sont à jour."};
  $("#lgf").onchange=e=>{const f=e.target.files[0];if(!f)return;const fr=new FileReader();fr.onload=()=>{const im=new Image();im.onload=()=>{const k=Math.min(1,300/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=im.width*k;c.height=im.height*k;const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,c.width,c.height);g.drawImage(im,0,0,c.width,c.height);db.etab.logo=c.toDataURL("image/jpeg",.92);save();renderAccueil()};im.onerror=()=>{$("#amsg").textContent="Image illisible."};im.src=fr.result};fr.readAsDataURL(f)};
@@ -731,9 +731,9 @@ function edtBase(){
   const cl=clSort(db.classes),A=[],noProf=[];let id=1;
   const profOf=(m,c)=>db.profs.find(p=>p.ens.includes(m+"|"+c));
   const tagOf=m=>/^EPS/i.test(m)?"eps":/^Fran/i.test(m)?"fr":"o";
-  cl.forEach(c=>db.matieres.filter(m=>m.niveau===c.niveau).forEach(m=>{const v=Math.max(0,Math.round(+m.vol||0)),p=profOf(m.matiere,c.classe);if(!v)return;if(!p){noProf.push({c:c.classe,m:m.matiere,n:v});return}for(let i=0;i<v;i++)A.push({id:id++,cls:[c.classe],mat:m.matiere,profs:[p.id],tag:tagOf(m.matiere)})}));
+  cl.forEach(c=>db.matieres.filter(m=>m.niveau===c.niveau).forEach(m=>{const v=Math.max(0,Math.round(+m.vol||0)),p=profOf(m.matiere,c.classe);if(!v)return;if(!p){noProf.push({c:c.classe,m:m.matiere,n:v});return}for(let i=0;i<v;i++)A.push({id:id++,cls:[c.classe],mat:m.matiere,profs:[p.id],pc:[[p.id,c.classe]],tag:tagOf(m.matiere)})}));
   const pairs=[];
-  if(db.edt.jum)[["6e","5e"],["4e","3e"]].forEach(([a,b])=>{const X=cl.filter(c=>c.niveau===a),Y=cl.filter(c=>c.niveau===b);for(let i=0;i<Math.min(X.length,Y.length);i++){const ea=A.filter(t=>t.tag==="eps"&&t.cls[0]===X[i].classe),eb=A.filter(t=>t.tag==="eps"&&t.cls[0]===Y[i].classe),n=Math.min(ea.length,eb.length);for(let k=0;k<n;k++){const x=ea[k],y=eb[k];A.splice(A.indexOf(y),1);x.cls=[X[i].classe,Y[i].classe];x.profs=[...new Set([x.profs[0],y.profs[0]])];x.joint=1}if(n)pairs.push(X[i].classe+"+"+Y[i].classe);else if(ea.length||eb.length)noProf.push({c:X[i].classe+" / "+Y[i].classe,m:"EPS jumelée",n:0,why:"pas de partenaire EPS"})}});
+  if(db.edt.jum)[["6e","5e"],["4e","3e"]].forEach(([a,b])=>{const X=cl.filter(c=>c.niveau===a),Y=cl.filter(c=>c.niveau===b);for(let i=0;i<Math.min(X.length,Y.length);i++){const ea=A.filter(t=>t.tag==="eps"&&t.cls[0]===X[i].classe),eb=A.filter(t=>t.tag==="eps"&&t.cls[0]===Y[i].classe),n=Math.min(ea.length,eb.length);for(let k=0;k<n;k++){const x=ea[k],y=eb[k];A.splice(A.indexOf(y),1);x.cls=[X[i].classe,Y[i].classe];x.profs=[...new Set([x.profs[0],y.profs[0]])];x.pc=[...x.pc,...y.pc];x.joint=1}if(n)pairs.push(X[i].classe+"+"+Y[i].classe);else if(ea.length||eb.length)noProf.push({c:X[i].classe+" / "+Y[i].classe,m:"EPS jumelée",n:0,why:"pas de partenaire EPS"})}});
   return{A,noProf,pairs};
 }
 function edtDiag(base){
@@ -751,62 +751,68 @@ let edtStop=false;
 const fmtT=n=>Math.floor(n/60)+":"+String(Math.floor(n%60)).padStart(2,"0");
 async function edtRun(msg,limit){
   const LIM=limit||300000,base=edtBase(),t0=Date.now(),dl=t0+LIM;edtStop=false;
-  const R=db.edt.refus,AP=db.edt.apm,S={cl:new Map(),pr:new Map(),cnt:new Map(),dbl:new Set()};
+  const R=db.edt.refus,AP=db.edt.apm,S={cl:new Map(),pr:new Map(),pc:new Map(),cnt:new Map(),dbl:new Set()};
   const A=base.A.map(a=>({...a,j:0,h:0})),ck=(c,m,j)=>c+"|"+m+"|"+j,cn=(c,m,j)=>S.cnt.get(ck(c,m,j))||0;
   const refus=(p,j,h)=>{const t=(R[p]||{})[j];return t&&String(t).split(/[^0-9]+/).includes(String(h))};
-  const epsOn=(c,j)=>{if(j<1||j>5)return false;for(let h=1;h<=7;h++){const x=S.cl.get(c+"|"+j+"|"+h);if(x&&x.tag==="eps")return true}return false};
-  const ok=(a,j,h)=>{
+  const pcK=(p,c,j,h)=>p+"|"+c+"|"+j+"|"+h;
+  /* blk : teste la pose de la séance a en (jour j, heure h).
+     B=null : test rapide, renvoie true si le créneau est libre et autorisé.
+     B=Set  : renvoie false si interdit définitivement (heure refusée, après-midi interdit, heure EPS...),
+              sinon true et remplit B avec les séances déjà placées qui gênent (et qu'on peut déplacer). */
+  const blk=(a,j,h,B)=>{
+    const hit=x=>{if(!B)return true;B.add(x);return false};
+    const same=(c,mat)=>{for(let k=1;k<=7;k++){const y=S.cl.get(c+"|"+j+"|"+k);if(y&&y.mat===mat)B.add(y)}};
     for(const c of a.cls){
-      if(S.cl.has(c+"|"+j+"|"+h))return false;
+      const x=S.cl.get(c+"|"+j+"|"+h);if(x&&hit(x))return false;
       if(h>=6&&AP[c+"|"+j])return false;
       const n=cn(c,a.mat,j);
       if(a.tag==="eps"){
-        if(![1,2,3,6,7].includes(h)||n>0||epsOn(c,j-1)||epsOn(c,j+1))return false;
+        if(![1,2,3,6,7].includes(h))return false;
+        if(n>0){if(!B)return false;same(c,a.mat)}
+        for(const d of[j-1,j+1]){if(d<1||d>5)continue;for(let k=1;k<=7;k++){const y=S.cl.get(c+"|"+d+"|"+k);if(y&&y.tag==="eps"&&hit(y))return false}}
       }else if(a.tag==="fr"){
-        if(n>=2)return false;
-        if(n===1){
-          if(S.dbl.has(c))return false;
-          for(let k=1;k<=7;k++){const x=S.cl.get(c+"|"+j+"|"+k);if(x&&x.mat===a.mat&&Math.abs(k-h)<=1)return false;}
-        }
-      }else if(n>=1)return false;
-      // Un professeur ne peut pas avoir deux heures consécutives dans la même classe,
-      // même si les deux heures correspondent à des matières différentes.
-      for(const nh of [h-1,h+1]){
-        if(nh<1||nh>7)continue;
-        const voisin=S.cl.get(c+"|"+j+"|"+nh);
-        if(voisin&&voisin.profs.some(p=>a.profs.some(q=>String(q)===String(p))))return false;
-      }
+        if(n>=2){if(!B)return false;same(c,a.mat)}
+        else if(n===1){if(S.dbl.has(c))return false;for(let k=1;k<=7;k++){const y=S.cl.get(c+"|"+j+"|"+k);if(y&&y.mat===a.mat&&Math.abs(k-h)<=1&&hit(y))return false}}
+      }else if(n>=1){if(!B)return false;same(c,a.mat)}
     }
-    for(const p of a.profs)if(S.pr.has(p+"|"+j+"|"+h)||refus(p,j,h))return false;
+    for(const p of a.profs){const x=S.pr.get(p+"|"+j+"|"+h);if(x&&hit(x))return false;if(refus(p,j,h))return false}
+    /* RÈGLE : un même professeur ne peut pas être dans la même classe à deux heures consécutives (même pour des matières différentes) */
+    for(const[p,c]of a.pc)for(const d of[h-1,h+1]){if(d<1||d>7)continue;const x=S.pc.get(pcK(p,c,j,d));if(x&&hit(x))return false}
     return true;
   };
-  const place=(a,j,h)=>{a.j=j;a.h=h;a.cls.forEach(c=>{S.cl.set(c+"|"+j+"|"+h,a);const k=ck(c,a.mat,j),n=cn(c,a.mat,j)+1;S.cnt.set(k,n);if(a.tag==="fr"&&n===2)S.dbl.add(c)});a.profs.forEach(p=>S.pr.set(p+"|"+j+"|"+h,a))};
-  const unplace=a=>{a.cls.forEach(c=>{S.cl.delete(c+"|"+a.j+"|"+a.h);const k=ck(c,a.mat,a.j),n=cn(c,a.mat,a.j)-1;S.cnt.set(k,n);if(a.tag==="fr"&&n===1)S.dbl.delete(c)});a.profs.forEach(p=>S.pr.delete(p+"|"+a.j+"|"+a.h));a.j=0;a.h=0};
+  const ok=(a,j,h)=>blk(a,j,h,null);
+  const place=(a,j,h)=>{a.j=j;a.h=h;a.cls.forEach(c=>{S.cl.set(c+"|"+j+"|"+h,a);const k=ck(c,a.mat,j),n=cn(c,a.mat,j)+1;S.cnt.set(k,n);if(a.tag==="fr"&&n===2)S.dbl.add(c)});a.profs.forEach(p=>S.pr.set(p+"|"+j+"|"+h,a));a.pc.forEach(([p,c])=>S.pc.set(pcK(p,c,j,h),a))};
+  const unplace=a=>{a.cls.forEach(c=>{S.cl.delete(c+"|"+a.j+"|"+a.h);const k=ck(c,a.mat,a.j),n=cn(c,a.mat,a.j)-1;S.cnt.set(k,n);if(a.tag==="fr"&&n===1)S.dbl.delete(c)});a.profs.forEach(p=>S.pr.delete(p+"|"+a.j+"|"+a.h));a.pc.forEach(([p,c])=>S.pc.delete(pcK(p,c,a.j,a.h)));a.j=0;a.h=0};
   const put=a=>{let best=null,bs=1e9;const c0=a.cls[0];for(let j=1;j<=5;j++){let load=0,f=8;for(let h=7;h>=1;h--){if(S.cl.has(c0+"|"+j+"|"+h))load++;else f=h}for(let h=1;h<=7;h++){if(!ok(a,j,h))continue;const s=(h-f)*3+h*.5+load*1.5+Math.random()*2;if(s<bs){bs=s;best=[j,h]}}}if(best){place(a,best[0],best[1]);return true}return false};
-  const fix=a=>{const sl=[];for(let j=1;j<=5;j++)for(let h=1;h<=7;h++)sl.push([j,h]);sl.sort(()=>Math.random()-.5);
-    for(const[j,h]of sl){const B=new Set();a.cls.forEach(c=>{const x=S.cl.get(c+"|"+j+"|"+h);if(x)B.add(x)});a.profs.forEach(p=>{const x=S.pr.get(p+"|"+j+"|"+h);if(x)B.add(x)});if(B.size!==1)continue;
-      const b=[...B][0],bj=b.j,bh=b.h;unplace(b);if(ok(a,j,h)){place(a,j,h);if(put(b))return true;unplace(a)}place(b,bj,bh)}return false};
+  const slots=[];for(let j=1;j<=5;j++)for(let h=1;h<=7;h++)slots.push([j,h]);
+  const shuf=r=>{for(let i=r.length-1;i>0;i--){const k=Math.floor(Math.random()*(i+1));[r[i],r[k]]=[r[k],r[i]]}return r};
+  /* move : caser la séance a en déplaçant au plus maxK séances qui la bloquent (chaîne d'éjections).
+     Les séances déplacées sont replacées ailleurs. side=true accepte un échange neutre (1 placée / 1 perdue)
+     pour sortir des impasses. Tout est annulé si ça n'aboutit pas. */
+  const move=(a,maxK,side)=>{
+    const cand=[];
+    for(const[j,h]of slots){const B=new Set();if(blk(a,j,h,B)&&B.size>0&&B.size<=maxK)cand.push([j,h,B,B.size+Math.random()*1.5])}
+    cand.sort((x,y)=>x[3]-y[3]);
+    const tries=side?1:Math.min(cand.length,30);
+    for(let t=0;t<tries;t++){
+      const[j,h,B]=cand[t],vict=[...B],old=vict.map(v=>[v.j,v.h]);
+      vict.forEach(unplace);
+      if(!ok(a,j,h)){vict.forEach((v,i)=>place(v,old[i][0],old[i][1]));continue}
+      place(a,j,h);
+      let lost=0;shuf([...vict]).forEach(v=>{if(!put(v))lost++});
+      if(lost===0||(side&&lost===1&&Math.random()<.7))return true;
+      vict.forEach(v=>{if(v.j)unplace(v)});unplace(a);vict.forEach((v,i)=>place(v,old[i][0],old[i][1]));
+    }
+    return false;
+  };
   const ord=[...A],unp=()=>A.filter(a=>!a.j),snap=()=>A.map(a=>[a.j,a.h]),cl=[...new Set(A.flatMap(a=>a.cls))];
   const restore=sn=>{A.forEach(a=>{if(a.j)unplace(a)});A.forEach((a,i)=>{if(sn[i][0])place(a,sn[i][0],sn[i][1])})};
   const holes=()=>{let n=0;cl.forEach(c=>{for(let j=1;j<=5;j++){let m=0;for(let h=1;h<=7;h++)if(S.cl.has(c+"|"+j+"|"+h))m=h;for(let h=1;h<m;h++)if(!S.cl.has(c+"|"+j+"|"+h))n++}});return n};
   A.forEach(a=>{a._d=0;for(let j=1;j<=5;j++)for(let h=1;h<=7;h++)if(ok(a,j,h))a._d++});
-  const construct=()=>{
-    A.forEach(a=>{if(a.j)unplace(a)});
-    // Recalcule les créneaux possibles à chaque nouvelle construction : les activités
-    // les plus contraintes sont placées en premier (EPS, français, disponibilités rares).
-    ord.forEach(a=>{
-      let d=0;for(let j=1;j<=5;j++)for(let h=1;h<=7;h++)if(ok(a,j,h))d++;
-      a._s=d+(a.tag==="eps"?-3:0)+(a.tag==="fr"?-1:0)+Math.random()*1.5;
-    });
-    ord.sort((x,y)=>x._s-y._s);
-    ord.forEach(a=>{if(!a.j)put(a)});
-  };
+  const construct=()=>{A.forEach(a=>{if(a.j)unplace(a)});ord.forEach(a=>a._s=a._d+Math.random()*4);ord.sort((x,y)=>x._s-y._s);ord.forEach(a=>put(a))};
   let best=null,bestUn=1e9,bestHoles=1e9,iter=0,lastImp=0,holeT=0,lastY=Date.now();
   const record=()=>{const u=unp().length,h=u?1e9:holes();if(u<bestUn||(u===0&&h<bestHoles)){if(u<bestUn)lastImp=iter;bestUn=u;bestHoles=h;best=snap()}};
   construct();record();
-  // Quelques reconstructions rapides testent différents ordres avant la recherche
-  // par déplacements, ce qui réduit les heures laissées de côté par un mauvais départ.
-  for(let seed=0;seed<8&&bestUn>0&&Date.now()<dl;seed++){construct();record()}
   while(!edtStop&&Date.now()<dl){
     const U=unp();
     if(!U.length){
@@ -815,7 +821,7 @@ async function edtRun(msg,limit){
       if(oj){unplace(x);if(put(x)){const hh=holes();if(hh<=bestHoles){if(hh<bestHoles){bestHoles=hh;best=snap()}}else{unplace(x);place(x,oj,oh)}}else place(x,oj,oh)}
     }else{
       const a=U[Math.floor(Math.random()*U.length)];
-      if(put(a)||fix(a)){record()}
+      if(put(a)||move(a,2,false)||move(a,3,false)){record()}
       else{
         const sn=snap(),u0=U.length,rel=A.filter(x=>x.j&&x!==a&&(x.cls.some(c=>a.cls.includes(c))||x.profs.some(p=>a.profs.includes(p)))),vict=[],k=2+Math.floor(Math.random()*6);
         while(vict.length<k&&rel.length)vict.push(rel.splice(Math.floor(Math.random()*rel.length),1)[0]);
@@ -1340,12 +1346,18 @@ prepLogo();
   async function check(){
     const l=get();if(!l||!DB_URL||!navigator.onLine)return;
     try{const r=await lic(l.id);if(!r.ok)return;const d=await r.json();
-      if(!d||d.actif===false||d.h!==l.hh){localStorage.removeItem(KEY);drawBar();show("Votre accès n’est plus valide (désactivé ou renouvelé). Saisissez vos nouveaux identifiants ou contactez votre fournisseur.")}}catch(e){}
+      if(!d||d.actif===false||d.h!==l.hh){localStorage.removeItem(KEY);drawBar();show("Votre accès n’est plus valide (désactivé ou renouvelé). Saisissez vos nouveaux identifiants ou contactez votre fournisseur.");return}
+      const nn=d.nom?String(d.nom).trim():"";if(nn&&nn!==l.nom){l.nom=nn;localStorage.setItem(KEY,JSON.stringify(l))}
+      if(window.licApplyName())render()}catch(e){}
   }
   window.licGate=()=>{if(ok())return false;if(!asked){asked=true;show()}return true};
   window.licOK=ok;window.licShow=show;
+  /* Nom officiel de l'établissement activé (vient de l'enregistrement créé par le générateur d'accès) */
+  window.licName=()=>{const l=get();return l&&l.id&&l.k&&l.nom?String(l.nom).trim():""};
+  window.licApplyName=()=>{const n=window.licName();if(!n||typeof db==="undefined"||!db)return false;db.etab=db.etab||etabDef();if(db.etab.nom===n)return false;db.etab.nom=n;try{localStorage.setItem(LS,JSON.stringify(db))}catch(e){}return true};
   window.licInfo=()=>{const l=get();return l?(l.nom||l.id)+" — activé":"non activé (mode découverte)"};
   drawBar();check();
+  if(window.licApplyName())try{render()}catch(e){}
 })();
 
 startPull();
