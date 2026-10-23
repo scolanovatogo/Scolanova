@@ -6,8 +6,8 @@
 <title>ScolaNova – Logiciel de gestion d’établissement scolaire : notes, bulletins, emplois du temps</title>
 <meta name="description" content="ScolaNova : application de gestion d’établissement scolaire. Classes, élèves, professeurs, saisie des notes à distance, bulletins en PDF, statistiques et emplois du temps.">
 <meta name="robots" content="index,follow">
-<link rel="canonical" href="https://scolanova.netlify.app/">
-<meta property="og:type" content="website"><meta property="og:title" content="ScolaNova – Gestion d’établissement scolaire"><meta property="og:description" content="Notes, bulletins PDF, statistiques et emplois du temps pour les établissements scolaires."><meta property="og:url" content="https://scolanova.netlify.app/">
+<link rel="canonical" href="https://scolanovatogo.github.io/Scolanova/">
+<meta property="og:type" content="website"><meta property="og:title" content="ScolaNova – Gestion d’établissement scolaire"><meta property="og:description" content="Notes, bulletins PDF, statistiques et emplois du temps pour les établissements scolaires."><meta property="og:url" content="https://scolanovatogo.github.io/Scolanova/">
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#eef1f6;--surface:#fff;--ink:#16213a;--mute:#5d6882;--line:#c9d6f0;--accent:#c4392d;--on-accent:#fff;--margin:#e3a39b;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -311,7 +311,7 @@ window.XLSX={
 <dialog id="dlg2"><div class="f"><h2>Ajouter une liste d’élèves</h2><label>Classe *</label><select id="pcl"></select><label>Une ligne par élève : Nom ; Prénoms ; Sexe ; Statut</label><textarea id="pt" placeholder="MENSAH ; Ama ; F ; Nouveau"></textarea><label>Ou importer un fichier Excel (.xlsx, .xls, .csv)</label><input type="file" id="pf" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"><div class="s" style="margin-top:4px">Première ligne = en-têtes : Nom, Prénoms, Sexe, Statut, et facultativement Classe et Date de naissance. Sans colonne Classe, la classe choisie ci-dessus est utilisée.</div><button type="button" class="btnline" id="pimp" style="width:100%;margin-top:8px">Choisir le fichier et importer</button><div class="err" id="perr" role="status"></div><div class="btns"><button type="button" id="pclose">Fermer</button><button type="button" class="ok" id="pgo">Ajouter les élèves</button></div></div></dialog>
 <script>
 /* ADRESSES À RÉGLER UNE FOIS PAR LE DÉVELOPPEUR : APP_URL = page en ligne ouverte par les enseignants ; DB_URL = adresse Firebase Realtime Database */
-const APP_URL="https://scolanova.netlify.app",DB_URL="https://scolanova-905c6-default-rtdb.europe-west1.firebasedatabase.app";
+const APP_URL="https://scolanovatogo.github.io/Scolanova",DB_URL="https://scolanova-905c6-default-rtdb.europe-west1.firebasedatabase.app";
 const TOK=((location.hash.match(/^#ens=(.+)/)||location.search.match(/[?&]ens=([^&#]+)/)||[])[1])||"",ENS=!!TOK,LS=ENS?"scolanova-ens":"scolanova-proto-v2";
 const NIV=["6e","5e","4e","3e","Seconde A","Seconde C","Seconde D","Seconde S","Première A","Première C","Première D","Terminale A","Terminale C","Terminale D"];
 const CAT=["Français","Anglais","Maths","Histoire-Géographie","SVT","PCT","EPS","ECM","Philosophie","Allemand","Espagnol","Informatique","Dessin","Agriculture","Enseignement ménager","EWE"];
