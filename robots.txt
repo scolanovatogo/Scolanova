@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://scolanova.netlify.app/sitemap.xml
+Sitemap: https://scolanovatogo.github.io/Scolanova/sitemap.xml
