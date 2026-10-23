@@ -755,11 +755,31 @@ async function edtRun(msg,limit){
   const A=base.A.map(a=>({...a,j:0,h:0})),ck=(c,m,j)=>c+"|"+m+"|"+j,cn=(c,m,j)=>S.cnt.get(ck(c,m,j))||0;
   const refus=(p,j,h)=>{const t=(R[p]||{})[j];return t&&String(t).split(/[^0-9]+/).includes(String(h))};
   const epsOn=(c,j)=>{if(j<1||j>5)return false;for(let h=1;h<=7;h++){const x=S.cl.get(c+"|"+j+"|"+h);if(x&&x.tag==="eps")return true}return false};
-  const ok=(a,j,h)=>{for(const c of a.cls){if(S.cl.has(c+"|"+j+"|"+h))return false;if(h>=6&&AP[c+"|"+j])return false;const n=cn(c,a.mat,j);
-      if(a.tag==="eps"){if(![1,2,3,6,7].includes(h)||n>0||epsOn(c,j-1)||epsOn(c,j+1))return false}
-      else if(a.tag==="fr"){if(n>=2)return false;if(n===1){if(S.dbl.has(c))return false;for(let k=1;k<=7;k++){const x=S.cl.get(c+"|"+j+"|"+k);if(x&&x.mat===a.mat&&Math.abs(k-h)<=1)return false}}}
-      else if(n>=1)return false}
-    for(const p of a.profs)if(S.pr.has(p+"|"+j+"|"+h)||refus(p,j,h))return false;return true};
+  const ok=(a,j,h)=>{
+    for(const c of a.cls){
+      if(S.cl.has(c+"|"+j+"|"+h))return false;
+      if(h>=6&&AP[c+"|"+j])return false;
+      const n=cn(c,a.mat,j);
+      if(a.tag==="eps"){
+        if(![1,2,3,6,7].includes(h)||n>0||epsOn(c,j-1)||epsOn(c,j+1))return false;
+      }else if(a.tag==="fr"){
+        if(n>=2)return false;
+        if(n===1){
+          if(S.dbl.has(c))return false;
+          for(let k=1;k<=7;k++){const x=S.cl.get(c+"|"+j+"|"+k);if(x&&x.mat===a.mat&&Math.abs(k-h)<=1)return false;}
+        }
+      }else if(n>=1)return false;
+      // Un professeur ne peut pas avoir deux heures consécutives dans la même classe,
+      // même si les deux heures correspondent à des matières différentes.
+      for(const nh of [h-1,h+1]){
+        if(nh<1||nh>7)continue;
+        const voisin=S.cl.get(c+"|"+j+"|"+nh);
+        if(voisin&&voisin.profs.some(p=>a.profs.some(q=>String(q)===String(p))))return false;
+      }
+    }
+    for(const p of a.profs)if(S.pr.has(p+"|"+j+"|"+h)||refus(p,j,h))return false;
+    return true;
+  };
   const place=(a,j,h)=>{a.j=j;a.h=h;a.cls.forEach(c=>{S.cl.set(c+"|"+j+"|"+h,a);const k=ck(c,a.mat,j),n=cn(c,a.mat,j)+1;S.cnt.set(k,n);if(a.tag==="fr"&&n===2)S.dbl.add(c)});a.profs.forEach(p=>S.pr.set(p+"|"+j+"|"+h,a))};
   const unplace=a=>{a.cls.forEach(c=>{S.cl.delete(c+"|"+a.j+"|"+a.h);const k=ck(c,a.mat,a.j),n=cn(c,a.mat,a.j)-1;S.cnt.set(k,n);if(a.tag==="fr"&&n===1)S.dbl.delete(c)});a.profs.forEach(p=>S.pr.delete(p+"|"+a.j+"|"+a.h));a.j=0;a.h=0};
   const put=a=>{let best=null,bs=1e9;const c0=a.cls[0];for(let j=1;j<=5;j++){let load=0,f=8;for(let h=7;h>=1;h--){if(S.cl.has(c0+"|"+j+"|"+h))load++;else f=h}for(let h=1;h<=7;h++){if(!ok(a,j,h))continue;const s=(h-f)*3+h*.5+load*1.5+Math.random()*2;if(s<bs){bs=s;best=[j,h]}}}if(best){place(a,best[0],best[1]);return true}return false};
@@ -770,10 +790,23 @@ async function edtRun(msg,limit){
   const restore=sn=>{A.forEach(a=>{if(a.j)unplace(a)});A.forEach((a,i)=>{if(sn[i][0])place(a,sn[i][0],sn[i][1])})};
   const holes=()=>{let n=0;cl.forEach(c=>{for(let j=1;j<=5;j++){let m=0;for(let h=1;h<=7;h++)if(S.cl.has(c+"|"+j+"|"+h))m=h;for(let h=1;h<m;h++)if(!S.cl.has(c+"|"+j+"|"+h))n++}});return n};
   A.forEach(a=>{a._d=0;for(let j=1;j<=5;j++)for(let h=1;h<=7;h++)if(ok(a,j,h))a._d++});
-  const construct=()=>{A.forEach(a=>{if(a.j)unplace(a)});ord.forEach(a=>a._s=a._d+Math.random()*4);ord.sort((x,y)=>x._s-y._s);ord.forEach(a=>put(a))};
+  const construct=()=>{
+    A.forEach(a=>{if(a.j)unplace(a)});
+    // Recalcule les créneaux possibles à chaque nouvelle construction : les activités
+    // les plus contraintes sont placées en premier (EPS, français, disponibilités rares).
+    ord.forEach(a=>{
+      let d=0;for(let j=1;j<=5;j++)for(let h=1;h<=7;h++)if(ok(a,j,h))d++;
+      a._s=d+(a.tag==="eps"?-3:0)+(a.tag==="fr"?-1:0)+Math.random()*1.5;
+    });
+    ord.sort((x,y)=>x._s-y._s);
+    ord.forEach(a=>{if(!a.j)put(a)});
+  };
   let best=null,bestUn=1e9,bestHoles=1e9,iter=0,lastImp=0,holeT=0,lastY=Date.now();
   const record=()=>{const u=unp().length,h=u?1e9:holes();if(u<bestUn||(u===0&&h<bestHoles)){if(u<bestUn)lastImp=iter;bestUn=u;bestHoles=h;best=snap()}};
   construct();record();
+  // Quelques reconstructions rapides testent différents ordres avant la recherche
+  // par déplacements, ce qui réduit les heures laissées de côté par un mauvais départ.
+  for(let seed=0;seed<8&&bestUn>0&&Date.now()<dl;seed++){construct();record()}
   while(!edtStop&&Date.now()<dl){
     const U=unp();
     if(!U.length){
