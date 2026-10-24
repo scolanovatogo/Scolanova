@@ -1463,21 +1463,45 @@ const colName=i=>{let t="";i++;while(i>0){const m=(i-1)%26;t=String.fromCharCode
 function nParseRows(rows,first,pidx,clsKeys){
   const out=[];out.info="";
   const isName=x=>x!==""&&!nnum(x)&&!nAbs(x)&&!NSEX.test(nk2(x))&&!clsKeys.includes(nk2(x))&&/[a-zà-ÿ]{2}/i.test(x);
+  const normHead=x=>nk2(x).replace(/^(note|notes|evaluation)/,"");
+  const headMap={i1:["interro1","interrogation1","int1","i1","note1"],i2:["interro2","interrogation2","int2","i2","note2"],dv:["devoir","devoir1","dv"],cp:["compo","composition","compos","cp"]};
+  let header=rows.find(r=>Array.from(r||[]).some(x=>Object.values(headMap).some(a=>a.includes(normHead(String(x??"").trim())))));
+  const headerCols={};
+  if(header)Array.from(header).forEach((x,i)=>{const h=normHead(String(x??"").trim());for(const k of NFL)if(headMap[k].includes(h))headerCols[k]=i});
   const recs=[],set=new Set();
   rows.forEach(r=>{
     const c=Array.from(r||[],x=>String(x??"").trim());
-    let s=0;while(s<c.length&&nnum(c[s]))s++;                       // N° en tête de ligne
-    const f=c.findIndex((x,i)=>i>=s&&nnum(x));if(f<0)return;         // aucune note : titre, en-tête ou ligne vide
-    let last=-1;for(let i=s;i<f;i++)if(isName(c[i]))last=i;if(last<0)return;
-    recs.push({ident:c.slice(s,f).filter(isName).join(" "),c});
-    for(let i=last+1;i<c.length;i++)if(nnum(c[i])||nAbs(c[i]))set.add(i)});
+    let s=0;while(s<c.length&&nnum(c[s]))s++; // numéro d'ordre éventuel en tête
+    const f=c.findIndex((x,i)=>i>=s&&nnum(x));
+    if(f<0)return;
+    let last=-1;for(let i=s;i<f;i++)if(isName(c[i]))last=i;
+    if(last<0)return;
+    const ident=c.slice(s,f).filter(isName).join(" ");
+    if(!ident)return;
+    recs.push({ident,c,last});
+    for(let i=last+1;i<c.length;i++)if(nnum(c[i])||nAbs(c[i]))set.add(i);
+  });
   const cols=[...set].sort((a,b)=>a-b);
-  if(!recs.length||!cols.length){out.info="Aucune ligne « nom suivi de notes » reconnue.";return out}
-  const base=cols.length>=8&&cols.length%4===0&&pidx>=0&&(pidx+1)*4<=cols.length?pidx*4:0;   // fiche à plusieurs périodes : bloc de la période choisie
-  const fi=Math.max(0,NFL.indexOf(first)),use=cols.slice(base,base+NFL.length-fi);
-  out.info="Lecture par position (titres ignorés) : "+use.map((ci,j)=>"colonne "+colName(ci)+" → "+FN[NFL[fi+j]]).join(" ; ")+".";
-  recs.forEach(({ident,c})=>{const vals={};use.forEach((ci,j)=>{const x=c[ci]||"";if(nnum(x))vals[NFL[fi+j]]=x.replace(",",".")});out.push({ident,vals})});
-  return out}
+  if(!recs.length||(!cols.length&&!Object.keys(headerCols).length)){out.info="Aucune ligne « nom suivi de notes » reconnue.";return out}
+  const base=cols.length>=8&&cols.length%4===0&&pidx>=0&&(pidx+1)*4<=cols.length?pidx*4:0;
+  const fi=Math.max(0,NFL.indexOf(first));
+  let use=[];
+  if(Object.keys(headerCols).length){
+    // Si les en-têtes existent, associer chaque note à sa vraie colonne : aucune permutation implicite.
+    for(let j=fi;j<NFL.length;j++)if(headerCols[NFL[j]]!==undefined)use.push({col:headerCols[NFL[j]],key:NFL[j]});
+    out.info="Lecture par en-têtes : "+use.map(x=>"colonne "+colName(x.col)+" → "+FN[x.key]).join(" ; ")+".";
+  }else{
+    // Sans en-têtes, conserver l'ordre physique des colonnes numériques/absences après le nom.
+    use=cols.slice(base,base+NFL.length-fi).map((ci,j)=>({col:ci,key:NFL[fi+j]}));
+    out.info="Lecture par position (titres ignorés) : "+use.map(x=>"colonne "+colName(x.col)+" → "+FN[x.key]).join(" ; ")+".";
+  }
+  recs.forEach(({ident,c})=>{
+    const vals={};
+    use.forEach(({col,key})=>{const x=c[col]||"";if(nnum(x))vals[key]=x.replace(",",".");else if(nAbs(x))vals[key]=""});
+    out.push({ident,vals});
+  });
+  return out;
+}
 function nParse(txt,first,pidx,clsKeys){
   return nParseRows(txt.split(/\r?\n/).map(l=>{let c=l.split(/\t|;/);if(c.length===1){const w=l.trim().split(/\s+/);while(w.length>2&&nnum(w[0]))w.shift();let k=w.length;while(k>1&&nnum(w[k-1]))k--;c=k<w.length?[w.slice(0,k).join(" "),...w.slice(k)]:[l.trim()]}return c}),first,pidx,clsKeys)}
 function nFind(ident,sidx){
