@@ -23,7 +23,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .back{font:inherit;font-weight:600;font-size:.95rem;border:1px solid var(--accent);color:var(--accent);background:var(--surface);border-radius:999px;padding:8px 14px;margin:4px 0 6px;cursor:pointer}.back[hidden]{display:none}body.ens .back{display:none}
 h1{font-size:1.5rem;margin:4px 0 2px;font-weight:700;letter-spacing:-.01em}
 .lead{margin:0 0 14px;color:var(--mute);font-size:.9rem}
-.tools{display:flex;gap:8px;margin-bottom:12px}
+.tools{display:flex;gap:8px;margin-bottom:12px}.tools.students-tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch}.students-tools #q{grid-column:span 2}.students-tools .btnline{min-width:0;white-space:normal;line-height:1.2;padding:9px 6px;font-size:.84rem}.students-tools .nav2{grid-column:1/-1;padding:0;flex-wrap:wrap}
 .tools input,.tools select{flex:1;min-width:0}
 input,select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%}
 input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -37,7 +37,7 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid 
 .t{font-weight:600;overflow:hidden;text-overflow:ellipsis}
 .s{color:var(--mute);font-size:.85rem}
 .empty{padding:28px 20px 28px 64px;color:var(--mute)}
-.fab{position:fixed;right:max(16px,calc(50% - 304px));bottom:calc(76px + env(safe-area-inset-bottom,0px));background:var(--accent);color:var(--on-accent);border:0;border-radius:999px;padding:14px 20px;font:inherit;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;z-index:5}
+.fab{position:fixed;right:max(12px,calc(50% - 308px));bottom:calc(62px + env(safe-area-inset-bottom,0px));background:var(--accent);color:var(--on-accent);border:0;border-radius:999px;padding:14px 20px;font:inherit;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer;z-index:5}
 nav{justify-content:flex-start;overflow-x:auto;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);display:flex;padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));z-index:5}
 nav button{flex:1 0 auto;min-width:60px;background:none;border:0;border-radius:8px;padding:8px 1px;font:inherit;font-size:.7rem;color:var(--mute);cursor:pointer}
 nav button[aria-selected="true"]{color:var(--ink);font-weight:700;background:color-mix(in srgb,var(--accent) 14%,transparent)}
@@ -357,6 +357,7 @@ ENT.emploi={h:"Emplois",lead:"Paramètres, génération et tableaux de service."
 ENT.bulletin={h:"Bulletins",lead:"Bulletin de chaque élève : moyennes, rangs, appréciations et mention.",need:()=>""};
 ENT.notes={h:"Notes",lead:"Notes par classe, période et matière : les moyennes se calculent seules.",need:()=>""};
 function render(){
+  $("#tools").className=tab==="eleves"?"tools students-tools":"tools";
   {const bk=$("#back");if(bk)bk.hidden=ENS||tab==="menu"}
   const E=ENT[tab],need=E.need();$("#list").className="list";$("#h").textContent=E.h;$("#lead").textContent=E.lead;
   $("#nav").innerHTML=ENS?ORDER.map((k,i)=>`<button role="tab" data-t="${k}" aria-selected="${k===tab}"><b>${i+1}</b>${ENT[k].h}${db[k]?" ("+db[k].length+")":""}</button>`).join(""):(tab==="menu"?"":'<button role="tab" data-t="menu" aria-selected="false"><b>☰</b>Menu</button>');$("#nav").style.display=(!ENS&&tab==="menu")?"none":"";
@@ -575,7 +576,7 @@ function renderBulletin(){
 }
 function bulPDF(C,p,all){
   const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;
-  const D=bulData(C,p),doc=new J({unit:"mm",format:"a4"}),E=db.etab;
+  const D=bulData(C,p),doc=new J({unit:"mm",format:"a4"}),E=db.etab,ann=annAll(C);
   (all?D.rows.map((_,i)=>i):[bst.i]).forEach((k,n)=>{
     if(n)doc.addPage();const M=bulModel(C,p,D,k);
     doc.setFont("helvetica","normal").setFontSize(8);
@@ -695,7 +696,7 @@ function bulPDF(C,p,all){
     const y1=y0+23;F(1,8);T("En lettres :",10,y1);doc.setFont("times","bolditalic");T(enLettres(M.mg),30,y1);
     const y2=y1+5;F(1,8);T("Absence",16,y2+3);T("Retard",46,y2+3);doc.rect(12,y2+4,22,5);T("------",23,y2+7.5,{align:"center"});doc.rect(42,y2+4,22,5);T("----------",53,y2+7.5,{align:"center"});doc.rect(76,y2+4,64,5);T("Conduite : _ _ _ _ _ _ _ _ _ _",78,y2+7.5);
     const y3=y2+14;F(1,8);T("Bilan de la classe",14,y3);doc.rect(10,y3+2,56,15);T("Moy la plus forte",12,y3+6);T(fm(B.mx),56,y3+6);T("Moy la plus faible",12,y3+10);T(fm(B.mn),56,y3+10);T("Moy de la classe",12,y3+14);T(fm(B.av),56,y3+14);
-    F(0,8);T("Observation et décision du conseil",108,y3,{align:"center"});doc.rect(78,y3+2,60,19);F(1,8);T("Travail",108,y3+8,{align:"center"});T(M.trav||"",108,y3+13,{align:"center"});{const nd=natDec(e,C,p);if(nd)T(nd,108,y3+18,{align:"center"})}T("Le Directeur",198,y3+4,{align:"right"});
+    F(0,8);T("Observation et décision du conseil",108,y3,{align:"center"});doc.rect(78,y3+2,60,19);F(1,8);T("Travail",108,y3+7,{align:"center"});T(M.trav||"",108,y3+11,{align:"center"});{const nd=decisionConseil(e,C,p,ann);if(nd){F(1,7);const lines=doc.splitTextToSize(nd,56);doc.text(lines,108,y3+14,{align:"center",lineHeightFactor:1.05})}}T("Le Directeur",198,y3+4,{align:"right"});
     T("Nom et signature du prof titulaire",12,y3+24);
     F(1,9);T(M.tit,12,264);T((E.lieu||"")+", le "+dc,105,264,{align:"center"});T(E.directeur||"",198,264,{align:"right"});
     F(0,7);T("Edité le "+d+"   Conservez précieusement ce bulletin, il ne sera délivré aucun duplicata",105,274,{align:"center"});
@@ -717,22 +718,26 @@ const xMoy=(x,k,M)=>{const N=x.notes[k]||{};if(!M.some(m=>nn(N[m.n])!=null))retu
 function xGroups(x){const M=xMats(x),I=xCands(x).map(c=>({e:c,ref:xMoy(x,c.k,M)})).filter(r=>r.ref!=null),E=[...new Set(I.map(r=>r.e.etab))].sort();return[{t:"Général",l:I},...E.map(n=>({t:"Établissement : "+n,l:I.filter(r=>r.e.etab===n)}))]}
 function natDec(e,C,p){const ps=PERS(C);if(p!==ps[ps.length-1])return"";const t=C.niveau==="3e"?"BEPC":/^Première/.test(C.niveau)?"Probatoire":/^Terminale/.test(C.niveau)?"Bac 2":"";if(!t||!(db.nat||{})[t])return"";const ok=e.nat&&e.nat[t],f=sx(e.sexe)==="Féminin";return ok?(f?"Admise":"Admis")+" à l’examen du "+t:(f?"Ajournée":"Ajourné")+" à l’examen du "+t}
 function decisionConseil(e,C,p,ann){
-  const ps=PERS(C);if(p!==ps[ps.length-1])return "";
+  const ps=PERS(C),norm=x=>String(x||"").trim().toLocaleLowerCase("fr");
+  if(!ps.length||norm(p)!==norm(ps[ps.length-1]))return "";
   const n=String(C.niveau||"").trim(),cl=String(C.classe||"").trim();
-  // Les décisions nationales déjà en place restent inchangées.
-  if(n==="3e"||/^Première/.test(n)||/^Terminale/.test(n))return natDec(e,C,p);
-  const niveaux={"6e":{suivant:"cinquième (5e)",courant:"sixième (6e)"},"5e":{suivant:"quatrième (4e)",courant:"cinquième (5e)"},"4e":{suivant:"troisième (3e)",courant:"quatrième (4e)"}};
-  let info=niveaux[n];
-  // Cycle 2 : la décision de passage est prise au deuxième semestre, uniquement en Seconde.
+  // Le BEPC, le Probatoire et le Bac conservent leurs décisions existantes.
+  if(n==="3e"||/^Première/i.test(n)||/^Terminale/i.test(n))return natDec(e,C,p);
+  let info=null;
+  const niveaux={"6e":{suivant:"classe de cinquième",courant:"sixième"},"5e":{suivant:"classe de quatrième",courant:"cinquième"},"4e":{suivant:"classe de troisième",courant:"quatrième"}};
+  if(niveaux[n])info=niveaux[n];
+  // Au second cycle, seule la Seconde reçoit ici une décision de passage.
   if(/^Seconde\b/i.test(n)||/^Seconde\b/i.test(cl)){
-    const serie=(n+" "+cl).match(/\b(A|C|D|S)\s*1?\b/i);
-    const s=serie?serie[1].toUpperCase():"";
-    // La Seconde S1 suit la dénomination demandée « seconde S ».
-    info={suivant:s==="S"?"seconde S":"première "+(s||"A"),courant:s==="S"?"seconde S":"seconde "+(s||"A"),sansNumero:true};
+    const m=n.match(/^Seconde\s+([ACDS])/i)||cl.match(/^Seconde\s+([ACDS])/i);
+    const serie=m?m[1].toUpperCase():"A";
+    info=serie==="S"?{suivant:"seconde S",courant:"seconde S"}:{suivant:"première "+serie,courant:"seconde "+serie};
   }
-  if(!info)return natDec(e,C,p);
-  const a=(ann||annAll(C)).get(e.id);if(!a||a.v==null||C.passage==null||C.passage===""||!Number.isFinite(+C.passage))return "";
-  return a.v>=+C.passage?"Passe en "+info.suivant:"Redouble la "+info.courant;
+  if(!info)return "";
+  const annual=(ann||annAll(C)).get(e.id);
+  const moyenne=annual&&annual.v!=null?Number(annual.v):null;
+  const seuil=C.passage!==undefined&&C.passage!==null&&String(C.passage).trim()!==""?Number(C.passage):NaN;
+  if(moyenne===null||!Number.isFinite(moyenne)||!Number.isFinite(seuil))return "";
+  return moyenne>=seuil?"Passe en "+info.suivant:"Redouble la "+info.courant;
 }
 function examPDF(x){
   const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;const doc=new J({unit:"mm",format:"a4"}),E=db.etab;
@@ -1247,7 +1252,7 @@ function bulSpec(B,C,p,E,ann,dc,d){
   cell(t+8,6,"Conduite : _ _ _ _ _ _ _ _",{cs:4,s:8,h:"l"});box(t+8,6,t+8,9,"d");
   cell(t+9,2,"Bilan de la classe",{cs:3,s:9,i:1});cell(t+9,5,"Observation et décision du conseil",{cs:6,s:9});
   [["Forte moyenne",B.mx],["Faible Moyenne",B.mn],["Moy de la classe",B.av]].forEach((a,i)=>{cell(t+10+i,1,a[0],{cs:2,h:"l"});cell(t+10+i,3,a[1]==null?"":fm(a[1]),{})});box(t+10,1,t+12,4,"m");
-  const nd=decisionConseil(e,C,p,ann);cell(t+10,6,"Travail",{cs:4,s:12});cell(t+11,6,M.trav||"",{cs:4,s:12});if(nd)cell(t+13,6,nd,{cs:4,s:8,w:1});box(t+10,6,t+13,9,"m");
+  const nd=decisionConseil(e,C,p,ann);cell(t+10,6,"Travail",{cs:4,s:12});cell(t+11,6,M.trav||"",{cs:4,s:12});if(nd)cell(t+12,6,nd,{cs:4,rs:2,s:8,w:1,v:"t"});box(t+10,6,t+13,9,"m");
   cell(t+10,10,"Le Directeur",{cs:3,u:1,v:"t"});cell(t+13,1,"Nom et signature du prof titulaire",{cs:4,u:1,h:"l"});
   cell(t+16,1,M.tit||"",{cs:4,s:8,u:1});cell(t+16,5,(E.lieu||"")+", le",{cs:3,h:"r"});cell(t+16,8,dc,{cs:2,u:1});cell(t+16,10,E.directeur||"",{cs:3,u:1});
   box(1,1,t+16,12,"m");
