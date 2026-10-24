@@ -309,7 +309,7 @@ window.XLSX={
 <script>(function(){const hide=()=>{document.querySelectorAll("body > *:not(main):not(nav):not(dialog):not(script):not(style):not(#add):not(#lock):not(#lic_bar)").forEach(el=>{if(/powered by\s*netlify/i.test(el.textContent||"")||/netlify/i.test(el.id+" "+el.className))el.style.setProperty("display","none","important")})};new MutationObserver(hide).observe(document.documentElement,{childList:true,subtree:true});document.addEventListener("DOMContentLoaded",hide);setTimeout(hide,1500)})()</script>
 <dialog id="dlg"><form class="f" id="form" novalidate><h2 id="dt"></h2><div id="fields"></div><div class="err" id="err" role="alert"></div><div class="btns"><button type="button" id="cancel">Annuler</button><button type="button" class="del" id="del">Supprimer</button><button type="submit" class="ok">Enregistrer</button></div></form></dialog>
 <dialog id="dlg3"><div class="f"><h2>Confirmer la modification</h2><p id="ct"></p><div class="btns"><button type="button" id="cn">Non, annuler</button><button type="button" class="ok" id="cy">Oui, modifier</button></div></div></dialog>
-<dialog id="dlg4"><div class="f"><h2>Importer des notes</h2><div class="s" id="ni"></div><label>Fichier Excel (.xlsx, .xls, .csv)</label><input type="file" id="nf" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"><div class="s" style="margin-top:4px">Première ligne = en-têtes : Nom, Prénoms (ou Nom et Prénoms), Interro 1, Interro 2, Devoir, Compo. Les élèves sont reconnus par leurs nom et prénoms. Les cases vides sont laissées telles quelles.</div><label>Ou coller les notes depuis Excel</label><div class="s" style="margin-bottom:4px">Copiez les lignes avec les noms et prénoms (en une ou deux colonnes), puis les notes. Le N°, le sexe et la classe sont ignorés : c’est la classe choisie en haut qui est utilisée. Si vous copiez aussi la ligne d’en-têtes, les colonnes sont reconnues d’après leurs titres.</div><textarea id="nt" style="width:100%;min-height:90px"></textarea><label>La première colonne de notes collée est</label><select id="ntc"><option value="i1">Interro 1 (puis Interro 2, Devoir, Compo)</option><option value="i2">Interro 2 (puis Devoir, Compo)</option><option value="dv">Devoir (puis Compo)</option><option value="cp">Compo seulement</option></select><div class="err" id="nerr" role="status"></div><div class="btns"><button type="button" id="nclose">Fermer</button><button type="button" class="ok" id="ngo">Choisir le fichier et importer</button></div></div></dialog>
+<dialog id="dlg4"><div class="f"><h2>Importer des notes</h2><div class="s" id="ni"></div><label>Fichier Excel (.xlsx, .xls, .csv)</label><input type="file" id="nf" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"><div class="s" style="margin-top:4px">Colonnes : nom et prénoms (en une ou deux colonnes), puis les notes dans l’ordre : Interro 1, Interro 2, Devoir, Compo. Les titres des colonnes ne comptent pas. Les cases vides sont laissées telles quelles.</div><label>Ou coller les notes depuis Excel</label><div class="s" style="margin-bottom:4px">Copiez les lignes avec les noms et prénoms (en une ou deux colonnes), puis les notes. Le N°, le sexe et la classe sont ignorés : c’est la classe choisie en haut qui est utilisée. Les titres sont ignorés : la 1re note de la ligne est l’Interro 1, la 2e l’Interro 2, la 3e le Devoir, la 4e la Compo.</div><textarea id="nt" style="width:100%;min-height:90px"></textarea><label>La première colonne de notes collée est</label><select id="ntc"><option value="i1">Interro 1 (puis Interro 2, Devoir, Compo)</option><option value="i2">Interro 2 (puis Devoir, Compo)</option><option value="dv">Devoir (puis Compo)</option><option value="cp">Compo seulement</option></select><div class="err" id="nerr" role="status"></div><div class="btns"><button type="button" id="nclose">Fermer</button><button type="button" class="ok" id="ngo">Choisir le fichier et importer</button></div></div></dialog>
 <dialog id="dlg5"><div class="f"><h2>Informations de l’établissement</h2><div id="ef"></div><div class="btns"><button type="button" id="ecl">Fermer</button><button type="button" class="ok" id="esv">Enregistrer</button></div></div></dialog>
 <dialog id="dlg2"><div class="f"><h2>Ajouter une liste d’élèves</h2><label>Classe *</label><select id="pcl"></select><label>Une ligne par élève : Nom ; Prénoms ; Sexe ; Statut</label><textarea id="pt" placeholder="MENSAH ; Ama ; F ; Nouveau"></textarea><label>Ou importer un fichier Excel (.xlsx, .xls, .csv)</label><input type="file" id="pf" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"><div class="s" style="margin-top:4px">Première ligne = en-têtes : Nom, Prénoms, Sexe, Statut, et facultativement Classe et Date de naissance. Sans colonne Classe, la classe choisie ci-dessus est utilisée.</div><button type="button" class="btnline" id="pimp" style="width:100%;margin-top:8px">Choisir le fichier et importer</button><div class="err" id="perr" role="status"></div><div class="btns"><button type="button" id="pclose">Fermer</button><button type="button" class="ok" id="pgo">Ajouter les élèves</button></div></div></dialog>
 <script>
@@ -325,7 +325,7 @@ let db,tab="menu",cur=null,q="",fc="",tmp=null,fillM=()=>{};
 const nextName=n=>{const k=db.classes.filter(c=>c.niveau===n).length;return cyc(n)===1?n+String.fromCharCode(65+k):n+(k+1)};
 function seed(){return{seq:1,classes:[],matieres:[],profs:[],eleves:[],notes:[],etab:etabDef()}}
 function load(){try{const r=localStorage.getItem(LS);if(r)return JSON.parse(r)}catch(e){}return seed()}
-function save(){try{const ln=window.licName&&window.licName();if(ln&&db&&db.etab&&db.etab.nom!==ln)db.etab.nom=ln}catch(e){}try{localStorage.setItem(LS,JSON.stringify(db))}catch(e){}if(ENS&&!ensBusy)ensPush();else if(!ENS&&db&&db.sync&&db.sync.key&&DB_URL&&window.licOK&&window.licOK())autoRef()}
+function save(){try{const ln=window.licName&&window.licName();if(ln&&db&&db.etab&&db.etab.nom!==ln)db.etab.nom=ln}catch(e){}try{localStorage.setItem(LS,JSON.stringify(db))}catch(e){}if(ENS&&!ensBusy)ensPush();else if(!ENS&&db&&db.sync&&db.sync.key&&DB_URL&&window.licOK&&window.licOK())autoRef();dsMark()}
 const OUTPUT_TABS=new Set(["bulletin","stats","examen","emploi","listes"]);
 function requireLicensedOutput(feature){
   if(typeof ENS!=="undefined"&&ENS)return true;
@@ -1008,9 +1008,9 @@ const PEND="scolanova-sync-attente-"+LS;let dirty=0,nbT=null;
 const syncPending=()=>{try{return !!localStorage.getItem(PEND)}catch(e){return false}};
 function markDirty(){dirty++;try{localStorage.setItem(PEND,String(Date.now()))}catch(e){}netBar()}
 function markClean(d0){if(d0!==dirty)return;const was=syncPending();try{localStorage.removeItem(PEND)}catch(e){}netBar(was?"ok":"")}
-function netBar(flash){
-  let b=document.getElementById("net_bar");const off=navigator.onLine===false,pend=syncPending();let txt="",bg="";
-  if(flash==="ok"){txt="✅ Données synchronisées avec le serveur.";bg="#e6f4ea";clearTimeout(nbT);nbT=setTimeout(()=>netBar(),3500)}
+function netBar(flash,ftxt){
+  let b=document.getElementById("net_bar");const off=navigator.onLine===false,pend=syncPending()||dsPending();let txt="",bg="";
+  if(flash==="ok"){txt=ftxt||"✅ Données synchronisées avec le serveur.";bg="#e6f4ea";clearTimeout(nbT);nbT=setTimeout(()=>netBar(),3500)}
   else if(off){txt="📴 Hors connexion : vous pouvez continuer à travailler. Tout est enregistré sur cet appareil"+(pend?" et sera envoyé automatiquement dès le retour du réseau.":".");bg="#fff4e0"}
   else if(pend){txt="🔄 Envoi des modifications en attente…";bg="#e8f0fe"}
   if(!txt){if(b)b.remove();return}
@@ -1024,17 +1024,94 @@ function syncNow(){
   if(navigator.onLine===false||!syncPending())return;
   if(ENS){if(!ensBusy)ensPush();return}
   flushRef()}
+
+/* ===== Synchronisation complète entre appareils de l'administration (classes, élèves, notes, emplois du temps…) =====
+   Le serveur garde une copie de toute la base sous une clé secrète dérivée du mot de passe. Un appareil neuf la reçoit
+   automatiquement ; si deux appareils ont modifié en même temps, l'utilisateur choisit. Hors connexion : envoi différé. */
+const DSK="scolanova-dbsync";
+const dsGet=()=>{try{return Object.assign({dev:"",base:0,dirty:false,last:0},JSON.parse(localStorage.getItem(DSK)||"{}"))}catch(e){return{dev:"",base:0,dirty:false,last:0}}};
+const dsSet=o=>{try{localStorage.setItem(DSK,JSON.stringify(o))}catch(e){}};
+let dsBusy=false,dsT=null,dsApplying=false,dsAsked=false,dsErr="",dsChg=0,dsKdAsked=false;
+const dsOn=()=>!ENS&&db&&DB_URL&&window.licOK&&window.licOK()&&window.licKd&&!!window.licKd();
+const dsRoot=()=>DB_URL.replace(/\/+$/,"")+"/ecoles/"+window.licKd();
+const dsUrl=p=>dsRoot()+"/"+p+".json";
+const dsPending=()=>{try{return dsOn()&&dsGet().dirty}catch(e){return false}};
+function dsMark(){try{if(ENS||dsApplying||!(window.licOK&&window.licOK()))return;const S=dsGet();S.dirty=true;dsSet(S);dsChg++;if(window.licKd&&window.licKd()){clearTimeout(dsT);dsT=setTimeout(()=>dsRun(),8000)}netBar()}catch(e){}}
+function dsNorm(d){d.classes=d.classes||[];d.matieres=d.matieres||[];d.profs=d.profs||[];d.eleves=d.eleves||[];d.notes=d.notes||[];d.exams=d.exams||[];d.nat=d.nat||{};d.seen=d.seen||{};d.edt=d.edt||{refus:{},apm:{},jum:false,res:null};d.etab=d.etab||etabDef();d.seq=d.seq||1;return d}
+async function dsPack(){
+  const c=Object.assign({},db);delete c.sync;const str=JSON.stringify(c);
+  if(window.CompressionStream){try{const buf=await new Response(new Blob([str]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer(),u=new Uint8Array(buf);let bin="";for(let i=0;i<u.length;i+=0x8000)bin+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return{z:1,d:btoa(bin)}}catch(e){}}
+  return{z:0,d:str}}
+async function dsUnpack(o){
+  if(!o||typeof o.d!=="string")throw new Error("vide");if(!o.z)return JSON.parse(o.d);
+  if(!window.DecompressionStream)throw new Error("navigateur");
+  const bin=atob(o.d),u=Uint8Array.from(bin,ch=>ch.charCodeAt(0));
+  return JSON.parse(await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream("gzip"))).text())}
+async function dsPull(meta){
+  const r=await fetch(dsUrl("dbv"));if(!r.ok)throw new Error(r.status);
+  const d=dsNorm(await dsUnpack(await r.json())),keep={sync:db.sync};
+  dsApplying=true;try{db=d;db.sync=keep.sync;save()}finally{dsApplying=false}
+  const S=dsGet();S.base=meta.t;S.dirty=false;S.last=Date.now();dsSet(S);
+  try{render()}catch(e){}netBar("ok","✅ Données mises à jour depuis le serveur : "+db.eleves.length+" élève(s), "+db.classes.length+" classe(s).")}
+async function dsPush(meta){
+  const c0=dsChg,t=Math.max(Date.now(),(meta?meta.t:0)+1),pk=await dsPack(),dev=dsGet().dev||(()=>{const S=dsGet();S.dev=Math.random().toString(36).slice(2,10);dsSet(S);return S.dev})();
+  const body={dbv:{t,by:dev,z:pk.z,d:pk.d},dbm:{t,by:dev,n:{c:db.classes.length,e:db.eleves.length,p:db.profs.length,o:db.notes.length}}};
+  const r=await fetch(dsRoot()+".json",{method:"PATCH",body:JSON.stringify(body)});if(!r.ok)throw new Error(r.status);
+  const S=dsGet();S.base=t;if(c0===dsChg)S.dirty=false;S.last=Date.now();dsSet(S);
+  if(!S.dirty)netBar("ok")}
+function dsBackup(){const blob=new Blob([JSON.stringify(db)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="scolanova-sauvegarde-avant-synchro-"+new Date().toISOString().slice(0,10)+".json";document.body.appendChild(a);a.click();setTimeout(()=>a.remove(),1500)}
+function dsChoice(meta){return new Promise(res=>{const n=meta.n||{},d=document.createElement("dialog");d.style.cssText="max-width:360px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:18px";
+  d.innerHTML=`<p style="margin:0 0 8px"><b>Deux versions des données</b></p><p style="margin:0 0 14px" class="s">Le serveur a été modifié depuis un autre appareil (${n.e??"?"} élèves, ${n.c??"?"} classes) et ce téléphone contient aussi des changements non envoyés (${db.eleves.length} élèves, ${db.classes.length} classes). Que garder ?</p><div style="display:grid;gap:8px"><button type="button" class="btnline" id="dc_k">Garder ce téléphone (remplace le serveur)</button><button type="button" class="btnline" id="dc_s">Prendre le serveur (remplace ce téléphone ; une sauvegarde est téléchargée)</button><button type="button" class="btnline" id="dc_l">Décider plus tard</button></div>`;
+  document.body.appendChild(d);const f=v=>{d.close();d.remove();res(v)};d.querySelector("#dc_k").onclick=()=>f("keep");d.querySelector("#dc_s").onclick=()=>f("server");d.querySelector("#dc_l").onclick=()=>f("later");d.oncancel=()=>f("later");d.showModal()})}
+async function dsRun(dir){
+  if(dsBusy||!dsOn()||navigator.onLine===false)return;
+  dsBusy=true;dsErr="";
+  try{
+    const r=await fetch(dsUrl("dbm"));if(!r.ok)throw new Error(r.status);const meta=await r.json();
+    const S=dsGet(),empty=!(db.classes.length||db.eleves.length||db.profs.length||db.notes.length),newer=!!(meta&&meta.t>S.base);
+    if(dir==="pull"){if(!meta)throw new Error("vide");await dsPull(meta)}
+    else if(dir==="push")await dsPush(meta);
+    else if(newer){
+      if(empty||(S.base&&!S.dirty))await dsPull(meta);
+      else if(!dsAsked){dsAsked=true;const c=await dsChoice(meta);if(c==="keep")await dsPush(meta);else if(c==="server"){dsBackup();await dsPull(meta)}}
+    }else if(S.dirty||(!meta&&!empty&&!S.base))await dsPush(meta);
+    else{S.last=Date.now();dsSet(S)}
+  }catch(e){const c=String(e&&e.message||"");dsErr=/^(401|403)$/.test(c)?"le serveur a refusé l’accès (règles de la base à vérifier)":c==="vide"?"aucune donnée sur le serveur":"échec de la synchronisation, nouvel essai automatique"}
+  dsBusy=false;netBar()}
+function dsKick(){dsAsked=false;dsRun()}
+window.dsKick=dsKick;
+function dsStatus(){
+  if(!(window.licOK&&window.licOK()))return"Accès non activé : synchronisation indisponible.";
+  if(!window.licKd())return"Saisissez votre mot de passe pour activer la synchronisation entre appareils.";
+  const S=dsGet(),h=S.last?new Date(S.last).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):"";
+  return(navigator.onLine===false?"Hors connexion · ":"")+(dsErr?"⚠ "+dsErr+" · ":"")+(S.dirty?"modifications en attente d’envoi.":h?"à jour (dernière synchronisation à "+h+").":"pas encore synchronisé.")}
+/* demande le mot de passe une fois (il ne sert qu'à calculer la clé, il n'est pas conservé) */
+function dsAskKd(force){return new Promise(res=>{
+  if(ENS||!(window.licOK&&window.licOK())||window.licKd()||(dsKdAsked&&!force)||navigator.onLine===false)return res(false);dsKdAsked=true;
+  const d=document.createElement("dialog");d.style.cssText="max-width:360px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:18px";
+  d.innerHTML=`<p style="margin:0 0 8px"><b>Synchronisation entre appareils</b></p><p class="s" style="margin:0 0 10px">Pour retrouver vos données sur tous vos appareils, saisissez une fois le mot de passe de votre accès ScolaNova.</p><input id="dk_p" autocapitalize="characters" autocomplete="off" placeholder="Mot de passe" style="width:100%"><div class="err" id="dk_e" role="alert" style="min-height:1.2em"></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button type="button" class="btnline" id="dk_n">Plus tard</button><button type="button" class="btnline" id="dk_y" style="background:var(--accent);color:var(--on-accent)">Activer</button></div>`;
+  document.body.appendChild(d);const f=v=>{d.close();d.remove();res(v)};
+  d.querySelector("#dk_n").onclick=()=>f(false);d.oncancel=()=>f(false);
+  d.querySelector("#dk_y").onclick=async()=>{const e=d.querySelector("#dk_e");e.textContent="Vérification…";try{await window.licSetKd(d.querySelector("#dk_p").value);f(true);dsKick()}catch(x){e.textContent=typeof x==="string"?x:"Une erreur est survenue. Réessayez."}};
+  d.showModal()})}
+function renderDbSync(L){
+  L.insertAdjacentHTML("beforeend",`<li class="bul" style="padding:14px 16px;margin-top:10px"><b>Synchronisation entre appareils</b><div class="s">Vos classes, élèves, professeurs, notes et emplois du temps sont gardés sur le serveur et retrouvés sur tout autre appareil activé avec le même accès. Le travail fait hors connexion est envoyé automatiquement au retour du réseau.</div><div class="s" id="ds_st" role="status" style="padding-top:6px"></div><div style="display:grid;gap:8px;margin-top:8px"><button type="button" class="btnline" id="ds_now">Synchroniser maintenant</button><button type="button" class="btnline" id="ds_up">Envoyer ce téléphone vers le serveur</button><button type="button" class="btnline" id="ds_down">Récupérer les données du serveur</button></div></li>`);
+  const st=$("#ds_st"),show=()=>{st.textContent=dsStatus()};show();
+  const need=async()=>{if(!(window.licOK&&window.licOK())){window.licShow();return false}if(!window.licKd()){const ok=await dsAskKd(true);show();return ok}return true};
+  $("#ds_now").onclick=async()=>{if(!await need())return;dsAsked=false;st.textContent="Synchronisation…";await dsRun();show()};
+  $("#ds_up").onclick=async()=>{if(!await need())return;if(!await confirmUI("Remplacer les données du serveur par celles de ce téléphone ?","Envoyer"))return;st.textContent="Envoi…";await dsRun("push");show()};
+  $("#ds_down").onclick=async()=>{if(!await need())return;if(!await confirmUI("Remplacer les données de ce téléphone par celles du serveur ? Une sauvegarde de ce téléphone est téléchargée avant.","Récupérer"))return;dsBackup();st.textContent="Récupération…";await dsRun("pull");show()}}
 function startSyncRetry(){
-  window.addEventListener("online",()=>{netBar();syncNow();if(adminSync())pullNotes().catch(()=>{})});
+  window.addEventListener("online",()=>{netBar();syncNow();dsRun();if(adminSync())pullNotes().catch(()=>{})});
   window.addEventListener("offline",()=>netBar());
-  document.addEventListener("visibilitychange",()=>{if(!document.hidden)syncNow()});
-  setInterval(syncNow,30000);netBar();syncNow()}
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden){syncNow();dsRun()}});
+  setInterval(()=>{syncNow();if(!document.hidden)dsRun()},30000);netBar();syncNow();setTimeout(()=>{dsRun();dsAskKd()},2500)}
 async function pullNotes(){
   const d=(await syGet("notes"))||{};db.seen=db.seen||{};let n=0;
   Object.keys(d).forEach(k=>{const x=d[k];if(!x||x.e==null)return;const sig=JSON.stringify([x.i1,x.i2,x.dv,x.cp]);if(db.seen[k]===sig)return;
     let r=getN(x.e,x.m,x.p);if(!r){r={e:x.e,m:x.m,p:x.p,i1:"",i2:"",dv:"",cp:""};db.notes.push(r)}
     ["i1","i2","dv","cp"].forEach(f=>{if(x[f]!==undefined&&x[f]!=="")r[f]=x[f]});db.seen[k]=sig;n++});
-  if(n){save();if(!(tab==="notes"&&nst.d))render();setTimeout(()=>{const l=$("#lead");if(l)l.textContent=n+" note(s) reçue(s) des enseignants."},0)}
+  if(n){dsApplying=true;try{save()}finally{dsApplying=false}if(!(tab==="notes"&&nst.d))render();setTimeout(()=>{const l=$("#lead");if(l)l.textContent=n+" note(s) reçue(s) des enseignants."},0)}
   return n;
 }
 function startPull(){
@@ -1049,6 +1126,7 @@ function ensPush(){markDirty();clearTimeout(ensT);ensT=setTimeout(async()=>{cons
 async function ensLoad(){ensBusy=true;try{const d=await syGet("ref");if(d){db.classes=d.classes||[];db.matieres=d.matieres||[];db.eleves=d.eleves||[];db.profs=d.profs||[];db.etab=Object.assign(etabDef(),d.etab||{})}save()}catch(e){ensErr="Impossible de charger les listes ("+((e&&e.message)||"connexion")+").";ensMsg(ensErr)}ensBusy=false;render()}
 function renderSync(L){
   const S=db.sync=db.sync||{url:DB_URL,key:""};if(DB_URL)S.url=DB_URL;
+  if(!ENS)renderDbSync(L);
   L.insertAdjacentHTML("beforeend",`<li class="bul" style="padding:14px 16px;margin-top:10px"><b>Saisie des notes à distance</b><div class="s">Les enseignants reçoivent un lien qui ne contient que l’onglet des notes. Il faut une base en ligne (Firebase Realtime Database) et l’application hébergée sur votre site.</div><label>Adresse de la base</label><input id="sy_u" value="${esc(S.url)}" placeholder="https://mon-ecole-default-rtdb.firebaseio.com"><label>Clé de l’établissement (secrète)</label><div style="display:flex;gap:6px"><input id="sy_k" value="${esc(S.key)}" style="flex:1"><button type="button" class="btnline" id="sy_g">Générer</button></div><div style="display:grid;gap:8px;margin-top:10px"><button type="button" class="btnline" id="sy_s">Envoyer les listes aux enseignants</button><button type="button" class="btnline" id="sy_r">Récupérer les notes saisies</button><button type="button" class="btnline" id="sy_l">Afficher le lien enseignant</button></div><input id="sy_o" readonly style="margin-top:8px;display:none"><button type="button" class="btnline" id="sy_sh" style="display:none;margin-top:8px">Partager le lien</button><div class="s" id="sy_m" role="status" style="padding-top:6px"></div></li>`);
   const m=t=>{const e=$("#sy_m");e.textContent=t;e.scrollIntoView({block:"nearest"})},rd=()=>{if(!window.licOK()){window.licShow();return false}S.url=$("#sy_u").value.trim();S.key=$("#sy_k").value.trim();save();return S.url&&S.key&&S.key.length>=20},NO="Renseignez l’adresse de la base et une clé d’au moins 20 caractères (touchez « Générer »).";
   $("#sy_g").onclick=()=>{$("#sy_k").value=Array.from(crypto.getRandomValues(new Uint8Array(12)),b=>b.toString(36).padStart(2,"0")).join("");rd()};
@@ -1372,39 +1450,36 @@ function readXlsx(file,cb,fail){
 }
 function openNImp(){$("#ni").textContent="Classe : "+nst.c+" · "+nst.p+" · "+nst.m;$("#nf").value="";$("#nt").value="";$("#ntc").value="i1";$("#nerr").textContent="";$("#dlg4").showModal()}
 $("#nclose").onclick=()=>$("#dlg4").close();
-/* Collage de notes : N°, sexe et classe ignorés ; nom et prénoms en une ou deux colonnes ; en-têtes reconnus s'ils sont collés */
-const NFL=["i1","i2","dv","cp"],NMP={interro1:"i1",int1:"i1",i1:"i1",interro2:"i2",int2:"i2",i2:"i2",devoir:"dv",dev:"dv",dv:"dv",compo:"cp",comp:"cp",composition:"cp",cp:"cp"};
-const NIDN=/^(nometprenoms?|nomsetprenoms?|nomprenoms?|eleves?|candidats?|identite)$/,NSEX=/^(m|f|g|h|masc|fem|masculin|feminin|garcon|fille|homme|femme)$/;
+/* Import / collage de notes : les titres de colonnes sont IGNORÉS. N°, sexe et classe sont ignorés ; nom et prénoms en une ou deux colonnes ;
+   la 1re colonne de notes = Interro 1, la 2e = Interro 2, la 3e = Devoir, la 4e = Compo. */
+const NFL=["i1","i2","dv","cp"],FN={i1:"Interro 1",i2:"Interro 2",dv:"Devoir",cp:"Compo"};
+const NSEX=/^(m|f|g|h|masc|fem|masculin|feminin|garcon|fille|homme|femme)$/;
 const nnum=v=>/^[+-]?(\d+([.,]\d*)?|[.,]\d+)$/.test(String(v??"").trim());
 const nAbs=v=>/^(abs|absent|absente|a|-|—|–|\/|nc)$/i.test(String(v??"").trim());
 const ntok=s=>String(s??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().split(/[^a-z]+/).filter(Boolean);
-const nRole=x=>{const n=nk2(x);return NMP[n]||(n==="nom"||n==="noms"?"nom":n==="prenom"||n==="prenoms"?"pre":NIDN.test(n)?"id":null)};
+const colName=i=>{let t="";i++;while(i>0){const m=(i-1)%26;t=String.fromCharCode(65+m)+t;i=Math.floor((i-1)/26)}return t};
+/* rows : lignes de cellules. Une ligne « élève » = un nom suivi d'au moins une note. Les colonnes de notes sont celles où apparaissent
+   des nombres (ou « abs ») après le nom ; une case vide reste donc vide sans décaler les colonnes suivantes. */
+function nParseRows(rows,first,pidx,clsKeys){
+  const out=[];out.info="";
+  const isName=x=>x!==""&&!nnum(x)&&!nAbs(x)&&!NSEX.test(nk2(x))&&!clsKeys.includes(nk2(x))&&/[a-zà-ÿ]{2}/i.test(x);
+  const recs=[],set=new Set();
+  rows.forEach(r=>{
+    const c=Array.from(r||[],x=>String(x??"").trim());
+    let s=0;while(s<c.length&&nnum(c[s]))s++;                       // N° en tête de ligne
+    const f=c.findIndex((x,i)=>i>=s&&nnum(x));if(f<0)return;         // aucune note : titre, en-tête ou ligne vide
+    let last=-1;for(let i=s;i<f;i++)if(isName(c[i]))last=i;if(last<0)return;
+    recs.push({ident:c.slice(s,f).filter(isName).join(" "),c});
+    for(let i=last+1;i<c.length;i++)if(nnum(c[i])||nAbs(c[i]))set.add(i)});
+  const cols=[...set].sort((a,b)=>a-b);
+  if(!recs.length||!cols.length){out.info="Aucune ligne « nom suivi de notes » reconnue.";return out}
+  const base=cols.length>=8&&cols.length%4===0&&pidx>=0&&(pidx+1)*4<=cols.length?pidx*4:0;   // fiche à plusieurs périodes : bloc de la période choisie
+  const fi=Math.max(0,NFL.indexOf(first)),use=cols.slice(base,base+NFL.length-fi);
+  out.info="Lecture par position (titres ignorés) : "+use.map((ci,j)=>"colonne "+colName(ci)+" → "+FN[NFL[fi+j]]).join(" ; ")+".";
+  recs.forEach(({ident,c})=>{const vals={};use.forEach((ci,j)=>{const x=c[ci]||"";if(nnum(x))vals[NFL[fi+j]]=x.replace(",",".")});out.push({ident,vals})});
+  return out}
 function nParse(txt,first,pidx,clsKeys){
-  const L=txt.split(/\r?\n/).map(l=>{let c=l.split(/\t|;/);if(c.length===1){const w=l.trim().split(/\s+/);let k=w.length;while(k>1&&nnum(w[k-1]))k--;c=k<w.length?[w.slice(0,k).join(" "),...w.slice(k)]:[l.trim()]}return c.map(x=>x.trim())}).filter(c=>c.some(x=>x!==""));
-  const isH=c=>!c.some(nnum)&&c.some(x=>nRole(x));
-  let k=0;while(k<L.length&&isH(L[k]))k++;
-  const rows=[];
-  if(k>0){
-    const H=L.slice(0,k),W=Math.max(...L.map(c=>c.length)),role=[];
-    for(let c=0;c<W;c++)for(const h of H){const r=nRole(h[c]||"");if(r){role[c]=r;break}}
-    const cols={};role.forEach((r,c)=>{if(NFL.includes(r))(cols[r]=cols[r]||[]).push(c)});
-    L.slice(k).forEach(c=>{
-      const g=r=>c.filter((_,i)=>role[i]===r&&c[i]!=="").join(" "),ident=(g("id")+" "+g("nom")+" "+g("pre")).trim();
-      if(!ident)return;const vals={};
-      NFL.forEach(f=>{const a=cols[f];if(!a)return;const ci=pidx>=0&&a.length>pidx?a[pidx]:a[0],x=c[ci]||"";if(x!==""&&!nAbs(x))vals[f]=x.replace(",",".")});
-      rows.push({ident,vals})});
-  }else{
-    const fi=Math.max(0,NFL.indexOf(first));
-    L.forEach(c0=>{
-      let s=0;while(s<c0.length-1&&nnum(c0[s]))s++;
-      const c=c0.slice(s);let f=c.findIndex(nnum);if(f<0)f=c.length;
-      let lt=-1;for(let i=0;i<f;i++)if(c[i]!=="")lt=i;
-      const id=c.slice(0,f).filter(x=>x!==""&&!NSEX.test(nk2(x))&&!clsKeys.includes(nk2(x))).join(" ");
-      if(!id)return;const vals={};
-      c.slice(lt+1).forEach((x,j)=>{const fl=NFL[fi+j];if(!fl||x===""||nAbs(x))return;vals[fl]=x.replace(",",".")});
-      rows.push({ident:id,vals})});
-  }
-  return rows}
+  return nParseRows(txt.split(/\r?\n/).map(l=>{let c=l.split(/\t|;/);if(c.length===1){const w=l.trim().split(/\s+/);while(w.length>2&&nnum(w[0]))w.shift();let k=w.length;while(k>1&&nnum(w[k-1]))k--;c=k<w.length?[w.slice(0,k).join(" "),...w.slice(k)]:[l.trim()]}return c}),first,pidx,clsKeys)}
 function nFind(ident,sidx){
   const t=ntok(ident);if(!t.length)return{};
   const key=a=>[...a].sort().join(" "),kt=key(t);
@@ -1412,10 +1487,18 @@ function nFind(ident,sidx){
   if(t.length<2)return{};
   m=sidx.filter(s=>t.every(x=>s.t.includes(x)));if(!m.length)m=sidx.filter(s=>s.t.every(x=>t.includes(x)));
   return m.length===1?{e:m[0].e,part:1}:m.length>1?{amb:1}:{}}
+/* lit la première feuille d'un classeur sous forme de lignes de cellules (position des colonnes conservée) */
+function readXlsxRows(file,cb,fail){
+  if(typeof XLSX==="undefined")return fail("Le lecteur Excel n’a pas pu se charger.");
+  const fr=new FileReader();
+  fr.onload=()=>{let rows;try{const wb=XLSX.read(new Uint8Array(fr.result),{type:"array",cellDates:true}),ws=wb.Sheets[wb.SheetNames[0]];
+    rows=Array.from(ws.rows||XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:true}),r=>Array.from(r||[],x=>x instanceof Date?"":x==null?"":String(x)))}catch(e){return fail("Ce fichier n’a pas pu être lu. Utilisez un fichier .xlsx ou .csv.")}cb(rows)};
+  fr.readAsArrayBuffer(file)}
 $("#ngo").onclick=()=>{
   const f=$("#nf").files[0],err=m=>($("#nerr").textContent=m),txt=$("#nt").value.trim();if(!f&&!txt){$("#nf").click();return}
   const runRows=rows=>{
-    if(!rows.length)return err("Aucune ligne reconnue. Collez le nom et les notes de chaque élève.");
+    const info=rows.info?rows.info+" ":"";
+    if(!rows.length)return err(info+"Aucune ligne reconnue. Il faut le nom et les notes de chaque élève.");
     const sidx=db.eleves.filter(e=>e.classe===nst.c).map(e=>({e,t:ntok(e.nom+" "+e.prenom)}));
     const seen=new Set(),plan=[],miss=[],dup=[],amb=[];let inv=0,chg=0,part=0,nov=0;
     rows.forEach(({ident,vals})=>{
@@ -1426,22 +1509,17 @@ $("#ngo").onclick=()=>{
       if(r.part)part++;
       const n=getN(r.e.id,nst.m,nst.p)||{};Object.keys(vals).forEach(k=>{if((n[k]??"")!==""&&+n[k]!==+vals[k])chg++});
       plan.push({e:r.e,vals})});
-    const msg=()=>plan.length+" élève(s) mis à jour."+(part?" "+part+" reconnu(s) par correspondance partielle du nom.":"")+(dup.length?" "+dup.length+" doublon(s) ignoré(s) : le premier est conservé ("+lst5(dup)+").":"")+(amb.length?" "+amb.length+" nom(s) ambigu(s), ignoré(s) ("+lst5(amb)+").":"")+(miss.length?" "+miss.length+" nom(s) introuvable(s) dans la classe "+nst.c+" ("+lst5(miss)+").":"")+(nov?" "+nov+" ligne(s) sans note.":"")+(inv?" "+inv+" note(s) invalide(s) ignorée(s) (0 à 20).":"");
+    const msg=()=>info+plan.length+" élève(s) mis à jour."+(part?" "+part+" reconnu(s) par correspondance partielle du nom.":"")+(dup.length?" "+dup.length+" doublon(s) ignoré(s) : le premier est conservé ("+lst5(dup)+").":"")+(amb.length?" "+amb.length+" nom(s) ambigu(s), ignoré(s) ("+lst5(amb)+").":"")+(miss.length?" "+miss.length+" nom(s) introuvable(s) dans la classe "+nst.c+" ("+lst5(miss)+").":"")+(nov?" "+nov+" ligne(s) sans note.":"")+(inv?" "+inv+" note(s) invalide(s) ignorée(s) (0 à 20).":"");
     const apply=()=>{
       plan.forEach(({e,vals})=>{let n=getN(e.id,nst.m,nst.p);if(!n){n={e:e.id,m:nst.m,p:nst.p,i1:"",i2:"",dv:"",cp:""};db.notes.push(n)}Object.assign(n,vals)});
       save();render();err(msg());
     };
-    if(!plan.length)return err("Aucune note importée."+msg().replace(/^0 élève\(s\) mis à jour\./,""));
+    if(!plan.length)return err("Aucune note importée. "+msg().replace(info,"").replace(/^0 élève\(s\) mis à jour\.\s*/,"").trim()+(info?" "+info.trim():""));
     if(chg>0)ask(chg+" note(s) déjà saisie(s) seront remplacées. Continuer ?",apply,()=>err("Import annulé."));else apply();
   };
-  const run=data=>{
-    const rows=[];let found=false;
-    data.forEach(o=>{let nom="",pre="",idt="";const vals={};
-      Object.keys(o).forEach(k=>{const n=nk2(k),v=String(o[k]).trim();if(n==="nom"||n==="noms"){nom=v;found=true}else if(n==="prenom"||n==="prenoms")pre=v;else if(NIDN.test(n)){idt=v;found=true}else if(NMP[n]&&v!==""&&!nAbs(v))vals[NMP[n]]=v.replace(",",".")});
-      const ident=(idt||nom+" "+pre).trim();if(ident)rows.push({ident,vals})});
-    if(!found)return err("Aucune colonne « Nom » ou « Nom et Prénoms » trouvée. Vérifiez la ligne d’en-têtes.");
-    runRows(rows)};
-  if(txt){const C=db.classes.find(c=>c.classe===nst.c);runRows(nParse(txt,$("#ntc").value,C?PERS(C).indexOf(nst.p):-1,cls().map(nk2)))}else readXlsx(f,run,err);
+  const C=db.classes.find(c=>c.classe===nst.c),pidx=C?PERS(C).indexOf(nst.p):-1,ck=cls().map(nk2);
+  if(txt)runRows(nParse(txt,$("#ntc").value,pidx,ck));
+  else readXlsxRows(f,rows=>runRows(nParseRows(rows,$("#ntc").value,pidx,ck)),err);
 };
 $("#pgo").onclick=()=>{
   const c=$("#pcl").value,rows=$("#pt").value.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(l=>{const p=l.split(/\t|;/).map(x=>x.trim());return{nom:p[0],prenom:p[1],sexe:p[2],statut:p[3]}});
@@ -1506,9 +1584,9 @@ prepLogo();
         const d=await r.json();if(!d||d.actif===false)throw"Identifiant ou mot de passe incorrect, ou accès désactivé.";
         if(await pbk(pw,d.s,256)!==d.h)throw"Identifiant ou mot de passe incorrect.";
         const k=(await pbk(pw,d.s+":k",144)).slice(0,24);
-        localStorage.setItem(KEY,JSON.stringify({id,nom:d.nom||"",k,hh:d.h,t:Date.now()}));
+        const kd=(await pbk(pw,d.s+":d",144)).slice(0,24);localStorage.setItem(KEY,JSON.stringify({id,nom:d.nom||"",k,kd,hh:d.h,t:Date.now()}));
         db.sync=db.sync||{};db.sync.url=DB_URL;db.sync.key=k;
-        close();drawBar();save();render();
+        close();drawBar();save();render();if(window.dsKick)window.dsKick();
       }catch(x){e(typeof x==="string"?x:"Une erreur est survenue. Réessayez.")}
       if(ov&&q("#lc_ok"))q("#lc_ok").disabled=false;
     };
@@ -1527,6 +1605,12 @@ prepLogo();
   /* Nom officiel de l'établissement activé (vient de l'enregistrement créé par le générateur d'accès) */
   window.licName=()=>{const l=get();return l&&l.id&&l.k&&l.nom?String(l.nom).trim():""};
   window.licApplyName=()=>{const n=window.licName();if(!n||typeof db==="undefined"||!db)return false;db.etab=db.etab||etabDef();if(db.etab.nom===n)return false;db.etab.nom=n;try{localStorage.setItem(LS,JSON.stringify(db))}catch(e){}return true};
+  /* Clé de synchronisation complète : dérivée du mot de passe, jamais transmise aux enseignants */
+  window.licKd=()=>{const l=get();return l&&l.kd?l.kd:""};
+  window.licSetKd=async pw=>{const l=get();if(!l||!l.id)throw"Accès non activé.";let r;try{r=await lic(l.id)}catch(e){throw"Connexion Internet requise."}
+    if(!r.ok)throw"Vérification impossible (code "+r.status+").";const d=await r.json();if(!d||d.actif===false)throw"Accès désactivé.";
+    const p=normPwd(pw);if(!p||await pbk(p,d.s,256)!==d.h)throw"Mot de passe incorrect.";
+    l.kd=(await pbk(p,d.s+":d",144)).slice(0,24);localStorage.setItem(KEY,JSON.stringify(l));return true};
   window.licInfo=()=>{const l=get();return l?(l.nom||l.id)+" — activé":"non activé (mode découverte)"};
   drawBar();check();
   if(window.licApplyName())try{render()}catch(e){}
