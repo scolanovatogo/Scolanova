@@ -306,7 +306,7 @@ window.XLSX={
 <script>(function(){const hide=()=>{document.querySelectorAll("body > *:not(main):not(nav):not(dialog):not(script):not(style):not(#add):not(#lock):not(#lic_bar)").forEach(el=>{if(/powered by\s*netlify/i.test(el.textContent||"")||/netlify/i.test(el.id+" "+el.className))el.style.setProperty("display","none","important")})};new MutationObserver(hide).observe(document.documentElement,{childList:true,subtree:true});document.addEventListener("DOMContentLoaded",hide);setTimeout(hide,1500)})()</script>
 <dialog id="dlg"><form class="f" id="form" novalidate><h2 id="dt"></h2><div id="fields"></div><div class="err" id="err" role="alert"></div><div class="btns"><button type="button" id="cancel">Annuler</button><button type="button" class="del" id="del">Supprimer</button><button type="submit" class="ok">Enregistrer</button></div></form></dialog>
 <dialog id="dlg3"><div class="f"><h2>Confirmer la modification</h2><p id="ct"></p><div class="btns"><button type="button" id="cn">Non, annuler</button><button type="button" class="ok" id="cy">Oui, modifier</button></div></div></dialog>
-<dialog id="dlg4"><div class="f"><h2>Importer des notes</h2><div class="s" id="ni"></div><label>Fichier Excel (.xlsx, .xls, .csv)</label><input type="file" id="nf" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"><div class="s" style="margin-top:4px">Première ligne = en-têtes : Nom, Prénoms, Interro 1, Interro 2, Devoir, Compo. Les élèves sont reconnus par leurs nom et prénoms. Les cases vides sont laissées telles quelles.</div><label>Ou coller les notes depuis Excel (Nom ; Prénoms ; Interro 1 ; Interro 2 ; Devoir ; Compo)</label><textarea id="nt" style="width:100%;min-height:90px"></textarea><div class="err" id="nerr" role="status"></div><div class="btns"><button type="button" id="nclose">Fermer</button><button type="button" class="ok" id="ngo">Choisir le fichier et importer</button></div></div></dialog>
+<dialog id="dlg4"><div class="f"><h2>Importer des notes</h2><div class="s" id="ni"></div><label>Fichier Excel (.xlsx, .xls, .csv)</label><input type="file" id="nf" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"><div class="s" style="margin-top:4px">Première ligne = en-têtes : Nom, Prénoms (ou Nom et Prénoms), Interro 1, Interro 2, Devoir, Compo. Les élèves sont reconnus par leurs nom et prénoms. Les cases vides sont laissées telles quelles.</div><label>Ou coller les notes depuis Excel</label><div class="s" style="margin-bottom:4px">Copiez les lignes avec les noms et prénoms (en une ou deux colonnes), puis les notes. Le N°, le sexe et la classe sont ignorés : c’est la classe choisie en haut qui est utilisée. Si vous copiez aussi la ligne d’en-têtes, les colonnes sont reconnues d’après leurs titres.</div><textarea id="nt" style="width:100%;min-height:90px"></textarea><label>La première colonne de notes collée est</label><select id="ntc"><option value="i1">Interro 1 (puis Interro 2, Devoir, Compo)</option><option value="i2">Interro 2 (puis Devoir, Compo)</option><option value="dv">Devoir (puis Compo)</option><option value="cp">Compo seulement</option></select><div class="err" id="nerr" role="status"></div><div class="btns"><button type="button" id="nclose">Fermer</button><button type="button" class="ok" id="ngo">Choisir le fichier et importer</button></div></div></dialog>
 <dialog id="dlg5"><div class="f"><h2>Informations de l’établissement</h2><div id="ef"></div><div class="btns"><button type="button" id="ecl">Fermer</button><button type="button" class="ok" id="esv">Enregistrer</button></div></div></dialog>
 <dialog id="dlg2"><div class="f"><h2>Ajouter une liste d’élèves</h2><label>Classe *</label><select id="pcl"></select><label>Une ligne par élève : Nom ; Prénoms ; Sexe ; Statut</label><textarea id="pt" placeholder="MENSAH ; Ama ; F ; Nouveau"></textarea><label>Ou importer un fichier Excel (.xlsx, .xls, .csv)</label><input type="file" id="pf" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"><div class="s" style="margin-top:4px">Première ligne = en-têtes : Nom, Prénoms, Sexe, Statut, et facultativement Classe et Date de naissance. Sans colonne Classe, la classe choisie ci-dessus est utilisée.</div><button type="button" class="btnline" id="pimp" style="width:100%;margin-top:8px">Choisir le fichier et importer</button><div class="err" id="perr" role="status"></div><div class="btns"><button type="button" id="pclose">Fermer</button><button type="button" class="ok" id="pgo">Ajouter les élèves</button></div></div></dialog>
 <script>
@@ -358,16 +358,17 @@ function render(){
   const E=ENT[tab],need=E.need();$("#list").className="list";$("#h").textContent=E.h;$("#lead").textContent=E.lead;
   $("#nav").innerHTML=ENS?ORDER.map((k,i)=>`<button role="tab" data-t="${k}" aria-selected="${k===tab}"><b>${i+1}</b>${ENT[k].h}${db[k]?" ("+db[k].length+")":""}</button>`).join(""):(tab==="menu"?"":'<button role="tab" data-t="menu" aria-selected="false"><b>☰</b>Menu</button>');$("#nav").style.display=(!ENS&&tab==="menu")?"none":"";
   if(tab==="menu"||tab==="listes"||tab==="accueil"||tab==="notes"||tab==="bulletin"||tab==="stats"||tab==="examen"||tab==="emploi"){$("#add").style.display="none";return tab==="menu"?renderMenu():tab==="listes"?renderListes():tab==="emploi"?renderEmploi():tab==="examen"?renderExamen():tab==="accueil"?renderAccueil():tab==="notes"?renderNotes():tab==="stats"?renderStats():renderBulletin()}
-  $("#tools").innerHTML=tab==="eleves"?`<input id="q" type="search" placeholder="Rechercher" value="${esc(q)}"><select id="fc" aria-label="Classe"><option value="">Toutes</option>${cls().map(c=>`<option ${c===fc?"selected":""}>${esc(c)}</option>`).join("")}</select><button class="btnline" id="paste">Coller une liste</button>`:"";
+  $("#tools").innerHTML=tab==="eleves"?`<input id="q" type="search" placeholder="Rechercher" value="${esc(q)}"><select id="fc" aria-label="Classe"><option value="">Toutes</option>${cls().map(c=>`<option ${c===fc?"selected":""}>${esc(c)}</option>`).join("")}</select><button class="btnline" id="paste">Coller une liste</button><button class="btnline" id="abd">Déclarer un abandon</button><button class="btnline" id="arb">${showArch?"Masquer les archives":"Archives ("+(db.archives||[]).length+")"}</button>`:"";
   let rows=[...db[tab]];
   if(tab==="eleves"){const s=q.trim().toLowerCase();rows=rows.filter(r=>(!fc||r.classe===fc)&&(!s||(r.nom+" "+r.prenom).toLowerCase().includes(s)))}
   rows.sort(E.sort);
   if(tab!==lastTab){selMode=false;selIds.clear();lastTab=tab}
   $("#tools").insertAdjacentHTML("beforeend",selMode?`<div class="nav2" style="gap:6px;flex-wrap:wrap;width:100%"><button class="btnline" id="sall">Tout (${rows.length})</button><button class="btnline" id="sdel" style="${selIds.size?"":"opacity:.5"}">Supprimer (${selIds.size})</button><button class="btnline" id="scan">Annuler</button></div>`:`<button class="btnline" id="selb">Sélectionner</button>`);
-  $("#list").innerHTML=(need?`<li class="hint">${need}</li>`:"")+(rows.length?rows.map((r,i)=>`<li><button class="row" data-id="${r.id}"><span class="num">${selMode?(selIds.has(r.id)?"☑":"☐"):i+1}</span><span class="txt"><div class="t">${E.title(r)}</div><div class="s">${E.sub(r)}</div></span></button></li>`).join(""):need?"":`<li class="empty">Rien à afficher. Touchez « Ajouter » pour créer ${E.one}.</li>`);
+  $("#list").innerHTML=(need?`<li class="hint">${need}</li>`:"")+(rows.length?rows.map((r,i)=>`<li><button class="row" data-id="${r.id}"><span class="num">${selMode?(selIds.has(r.id)?"☑":"☐"):i+1}</span><span class="txt"><div class="t">${E.title(r)}</div><div class="s">${E.sub(r)}</div></span></button></li>`).join(""):(need||(tab==="eleves"&&q.trim()&&(db.archives||[]).some(a=>(a.nom+" "+a.prenom).toLowerCase().includes(q.trim().toLowerCase()))))?"":`<li class="empty">Rien à afficher. Touchez « Ajouter » pour créer ${E.one}.</li>`);
+  if(tab==="eleves")$("#list").insertAdjacentHTML("beforeend",archSection());
   $("#add").style.display=need||selMode?"none":"";
   if($("#selb"))$("#selb").onclick=()=>{selMode=true;render()};if($("#scan"))$("#scan").onclick=()=>{selMode=false;selIds.clear();render()};if($("#sall"))$("#sall").onclick=()=>{const all=rows.every(r=>selIds.has(r.id));rows.forEach(r=>all?selIds.delete(r.id):selIds.add(r.id));render()};if($("#sdel"))$("#sdel").onclick=()=>delBatch(rows);
-  const qi=$("#q");if(qi){qi.oninput=e=>{q=e.target.value;const p=e.target.selectionStart;render();const n=$("#q");n.focus();n.setSelectionRange(p,p)};$("#fc").onchange=e=>{fc=e.target.value;render()};$("#paste").onclick=openPaste}
+  const qi=$("#q");if(qi){qi.oninput=e=>{q=e.target.value;const p=e.target.selectionStart;render();const n=$("#q");n.focus();n.setSelectionRange(p,p)};$("#fc").onchange=e=>{fc=e.target.value;render()};$("#paste").onclick=openPaste;$("#abd").onclick=openAbandon;$("#arb").onclick=()=>{showArch=!showArch;render()}}
 }
 const gen=(E,v)=>E.f.map(f=>{const val=v[f.k];const c=f.t==="sel"?`<select name="${f.k}"><option value="">Choisir…</option>${f.o().map(o=>`<option ${o===val?"selected":""}>${esc(o)}</option>`).join("")}</select>`:`<input name="${f.k}" type="${f.t==="num"?"number":f.t}" ${f.step?`step="${f.step}"`:""} value="${esc(val??"")}">`;return `<label>${f.l}${f.req?" *":""}</label>${c}`}).join("");
 function openForm(id){
@@ -576,7 +577,7 @@ function renderAccueil(){
  ETAB.forEach(f=>{const i=$("#a_"+f[0]);if(i)i.oninput=()=>{db.etab[f[0]]=i.value.trim();save();const m=$("#amsg");if(m)m.textContent="Enregistré. Les bulletins sont à jour."}});if($("#lic_st"))$("#lic_st").textContent=window.licInfo?window.licInfo():"";
   $("#asv").onclick=()=>{ETAB.forEach(f=>{db.etab[f[0]]=$("#a_"+f[0]).value.trim()});save();$("#amsg").textContent="Enregistré. Les bulletins sont à jour."};
  $("#lgf").onchange=e=>{const f=e.target.files[0];if(!f)return;const fr=new FileReader();fr.onload=()=>{const im=new Image();im.onload=()=>{const k=Math.min(1,300/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=im.width*k;c.height=im.height*k;const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,c.width,c.height);g.drawImage(im,0,0,c.width,c.height);db.etab.logo=c.toDataURL("image/jpeg",.92);save();renderAccueil()};im.onerror=()=>{$("#amsg").textContent="Image illisible."};im.src=fr.result};fr.readAsDataURL(f)};
- $("#lgx").onclick=()=>{delete db.etab.logo;save();renderAccueil()};renderSync(L);renderBackup(L);
+ $("#lgx").onclick=()=>{delete db.etab.logo;save();renderAccueil()};renderSync(L);renderBackup(L);renderParcours(L);
 }
 const U20=["zéro","un","deux","trois","quatre","cinq","six","sept","huit","neuf","dix","onze","douze","treize","quatorze","quinze","seize","dix-sept","dix-huit","dix-neuf"],T10=["","","vingt","trente","quarante","cinquante","soixante"];
 function w99(n){if(n<20)return U20[n];if(n<70){const t=Math.floor(n/10),u=n%10;return T10[t]+(u===1?"-et-un":u?"-"+U20[u]:"")}if(n<80){const u=n-60;return"soixante-"+(u===11?"et-onze":U20[u])}const u=n-80;return u?"quatre-vingt-"+U20[u]:"quatre-vingts"}
@@ -688,6 +689,17 @@ function examPDF(x){
   doc.setFont("times","bold").setFontSize(11).text([E.nom||"","Résultat de l’examen blanc du "+x.type,"Session du "+x.session],105,14,{align:"center"});let y=34;
   xGroups(x).forEach(g=>{doc.setFont("times","bold").setFontSize(9).text(g.t,10,y);doc.autoTable({startY:y+2,theme:"grid",styles:{font:"times",fontStyle:"bold",fontSize:8,cellPadding:1,lineColor:0,lineWidth:.2,textColor:0,halign:"center",fillColor:255},margin:{left:10,right:10},columnStyles:{0:{halign:"left",cellWidth:48}},head:[["",{content:"RÉUSSITE",colSpan:3},{content:"ÉCHEC",colSpan:3}],["","Fille","Garçon","Total","Fille","Garçon","Total"]],body:reusRows(g.l,10).map(r=>r.map(String))});y=doc.lastAutoTable.finalY+8;if(y>255){doc.addPage();y=20}});
   return doc}
+/* Classement de l'examen blanc : rang général et rang dans chaque établissement (ex æquo à 2 décimales) */
+const xRk=l=>{const r2=v=>Math.round(v*100),s=[...l].sort((a,b)=>b.ref-a.ref||(a.e.nom+" "+a.e.prenom).localeCompare(b.e.nom+" "+b.e.prenom,"fr"));return s.map(o=>({o,rk:1+s.filter(z=>r2(z.ref)>r2(o.ref)).length,ex:s.filter(z=>r2(z.ref)===r2(o.ref)).length>1}))};
+const rkS=r=>r?r.rk+(r.rk===1?"er":"e")+(r.ex?" ex":""):"";
+function xClass(x){const G=xGroups(x),gm=new Map(xRk(G[0].l).map(r=>[r.o.e.k,r]));return G.map((g,i)=>({t:g.t,gen:i===0,head:["Rang","Candidat","Sexe",i===0?"Établissement":"Rang gén.","Moy.","Résultat"],rows:xRk(g.l).map(r=>{const c=r.o.e,v=r.o.ref,f=sx(c.sexe)==="Féminin";return[rkS(r),(c.nom||"").toUpperCase()+" "+(c.prenom||""),c.sexe==="Féminin"?"F":c.sexe==="Masculin"?"M":"",i===0?c.etab:rkS(gm.get(c.k)),fm(v),v>=10?(f?"Admise":"Admis"):(f?"Ajournée":"Ajourné")]})}))}
+const clsT=g=>`<div class="s" style="padding:12px 0 4px"><b>${esc(g.t.replace(/^Général$/,"Classement général"))}</b></div><div style="overflow-x:auto"><table class="st"><thead><tr>${g.head.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${g.rows.map(r=>`<tr>${r.map((c,i)=>`<td${i===1||(i===3&&g.gen)?' class="l"':""}>${esc(c)}</td>`).join("")}</tr>`).join("")||'<tr><td colspan="6" class="l">Aucune note saisie.</td></tr>'}</tbody></table></div>`;
+function examClassPDF(x){
+  const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;const doc=new J({unit:"mm",format:"a4"}),E=db.etab;
+  doc.setFont("times","bold").setFontSize(11).text([E.nom||"","Classement de l’examen blanc du "+x.type,"Session du "+x.session],105,14,{align:"center"});let y=34;
+  xClass(x).forEach(g=>{if(y>250){doc.addPage();y=20}doc.setFont("times","bold").setFontSize(9).text(g.gen?"Classement général":g.t.replace(/^Établissement : /,"Classement de l’établissement : "),10,y);doc.autoTable({startY:y+2,theme:"grid",styles:{font:"times",fontStyle:"bold",fontSize:8,cellPadding:1,lineColor:0,lineWidth:.2,textColor:0,halign:"center",fillColor:255},margin:{left:10,right:10},columnStyles:{1:{halign:"left"},...(g.gen?{3:{halign:"left"}}:{})},head:[g.head],body:g.rows.length?g.rows:[["","Aucune note saisie.","","","",""]]});y=doc.lastAutoTable.finalY+8});
+  doc.setFont("times","normal").setFontSize(7).text("ex = ex æquo · admis à partir de 10",10,287);
+  return doc}
 const xst={v:"l",id:null,s:"n",nt:""};
 function renderExamen(){
   const L=$("#list"),T=exTypes();L.classList.add("plain");$("#tools").innerHTML="";
@@ -713,14 +725,15 @@ function renderExamen(){
     $("#nt2").onchange=e=>{xst.nt=e.target.value;renderExamen()};$("#xfm").onclick=()=>go("l");
     L.querySelectorAll("input[data-e]").forEach(c=>c.onchange=()=>{const e=db.eleves.find(y=>String(y.id)===c.dataset.e);e.nat=e.nat||{};e.nat[t]=c.checked;save();$("#nc").textContent=E.filter(y=>y.nat&&y.nat[t]).length});
     $("#xsv").onclick=()=>{db.nat[t]=true;save();$("#xm").textContent="Résultats enregistrés : le bulletin de fin d’année en tient compte."};return}
-  const M=xMats(x),C=xCands(x),on="background:var(--accent);color:var(--on-accent)",head=`<div class="s"><b>${esc(x.type)} blanc — session du ${esc(x.session)}</b> · ${C.length} candidats</div><div class="nav2" style="padding:8px 0;gap:6px;flex-wrap:wrap"><button class="btnline" data-s="n" style="${xst.s==="n"?on:""}">Notes</button><button class="btnline" data-s="r" style="${xst.s==="r"?on:""}">Résultats</button><button class="btnline" id="xfm">Fermer</button><button class="btnline" id="xdel">Supprimer</button></div>`;
+  const M=xMats(x),C=xCands(x),on="background:var(--accent);color:var(--on-accent)",head=`<div class="s"><b>${esc(x.type)} blanc — session du ${esc(x.session)}</b> · ${C.length} candidats</div><div class="nav2" style="padding:8px 0;gap:6px;flex-wrap:wrap"><button class="btnline" data-s="n" style="${xst.s==="n"?on:""}">Notes</button><button class="btnline" data-s="r" style="${xst.s==="r"?on:""}">Résultats</button><button class="btnline" data-s="c" style="${xst.s==="c"?on:""}">Classement</button><button class="btnline" id="xfm">Fermer</button><button class="btnline" id="xdel">Supprimer</button></div>`;
   let body;
   if(xst.s==="n")body=`<div class="s" style="padding-bottom:6px">Coefficients en haut. Moyenne = somme(note × coef) / somme des coefficients.</div><div style="overflow-x:auto"><table class="st"><thead><tr><th>Candidat</th>${M.map(m=>`<th>${esc(m.n)}<br><input class="ni" data-c="${esc(m.n)}" value="${m.c}" inputmode="decimal" readonly tabindex="-1" style="background:var(--bg);opacity:.85"></th>`).join("")}<th>Moy.</th></tr></thead><tbody>${C.map(c=>`<tr><td class="l">${esc(c.nom+" "+c.prenom)}<div class="s">${esc(c.etab)}</div></td>${M.map(m=>`<td><input class="ni" data-k="${c.k}" data-m="${esc(m.n)}" value="${esc((x.notes[c.k]||{})[m.n]??"")}" inputmode="decimal"></td>`).join("")}<td id="mo_${c.k}">${fm(xMoy(x,c.k,M))}</td></tr>`).join("")}</tbody></table></div>`;
+  else if(xst.s==="c")body=`<div class="s" style="padding-bottom:4px">Classement de l’examen blanc du ${esc(x.type)} — session du ${esc(x.session)}. Général, puis par établissement (ex = ex æquo ; admis à partir de 10).</div>${xClass(x).map(clsT).join("")}<div class="btns" style="margin-top:12px"><button class="btnline" id="xpdf">PDF</button></div><div class="s" id="xm" role="status" style="padding-top:6px"></div>`;
   else body=`<div class="s" style="padding-bottom:4px">Résultat de l’examen blanc du ${esc(x.type)} — session du ${esc(x.session)} (admis à partir de 10)</div>${xGroups(x).map(g=>reusT(esc(g.t),g.l,10)).join("")}<div class="btns" style="margin-top:12px"><button class="btnline" id="xpdf">PDF</button></div><div class="s" id="xm" role="status" style="padding-top:6px"></div>`;
   card(head+body);
   L.querySelectorAll("[data-s]").forEach(b=>b.onclick=()=>{xst.s=b.dataset.s;renderExamen()});$("#xfm").onclick=()=>go("l");
   $("#xdel").onclick=async()=>{if(await confirmUI("Supprimer cet examen blanc ?","Supprimer")){db.exams=db.exams.filter(y=>y.id!==x.id);save();go("l")}};
-  if($("#xpdf"))$("#xpdf").onclick=()=>saveDoc(examPDF(x),"Examen-blanc-"+x.type+".pdf",t=>{$("#xm").textContent=t});
+  if($("#xpdf"))$("#xpdf").onclick=()=>saveDoc(xst.s==="c"?examClassPDF(x):examPDF(x),(xst.s==="c"?"Classement-examen-blanc-":"Examen-blanc-")+x.type+".pdf",t=>{$("#xm").textContent=t});
   L.onkeydown=e=>{const i=e.target;if(!i.classList||!i.classList.contains("ni")||i.dataset.m===undefined)return;if(e.key!=="ArrowDown"&&e.key!=="ArrowUp"&&e.key!=="Enter")return;const col=[...L.querySelectorAll("input.ni[data-m]")].filter(z=>z.dataset.m===i.dataset.m),j=col.indexOf(i)+(e.key==="ArrowUp"?-1:1);if(col[j]){e.preventDefault();col[j].focus();col[j].select()}};
   L.oninput=e=>{const i=e.target;if(!i.classList.contains("ni"))return;if(i.dataset.c!==undefined){x.coefs[i.dataset.c]=i.value;const M2=xMats(x);C.forEach(c=>{const s=$("#mo_"+c.k);if(s)s.textContent=fm(xMoy(x,c.k,M2))})}else{const N=x.notes[i.dataset.k]=x.notes[i.dataset.k]||{};N[i.dataset.m]=i.value;$("#mo_"+i.dataset.k).textContent=fm(xMoy(x,i.dataset.k,xMats(x)))}save()};
 }
@@ -941,7 +954,7 @@ function renderStats(){
   if(!S.els.length){L.innerHTML=`<li class="hint" style="padding-left:16px">Aucun élève dans cette classe.</li>`;return}
   const on="background:var(--accent);color:var(--on-accent)",chip=(k,t)=>`<button class="btnline" data-v="${k}" style="flex:1 1 40%;${sst.v===k?on:""}">${t}</button>`;
   let body;
-  if(sst.v==="s"){const R=statRows(S);body=`<div style="overflow-x:auto"><table class="st"><thead><tr><th rowspan="2">Matière</th>${S.cols.map(c=>`<th colspan="2">${esc(c.m)}</th>`).join("")}</tr><tr>${S.cols.map(()=>"<th>G</th><th>F</th>").join("")}</tr></thead><tbody>${R.map(r=>`<tr><td class="l">${esc(r.l)}</td>${r.v.map(x=>`<td${r.s?' colspan="2"':""}>${x}</td>`).join("")}</tr>`).join("")}</tbody></table></div><div class="s" style="padding-top:6px">G = garçons, F = filles. Statistiques de la composition.</div>${reusT("Réussite et échec — composition seule (compos × coefficients, seuil 10)",S.cmp,10)}${reusT("Réussite et échec — moyenne de la période (seuil "+fm(S.thr)+")",S.per,S.thr)}`}
+  if(sst.v==="s"){const R=statRows(S);body=`<div style="overflow-x:auto"><table class="st"><thead><tr><th rowspan="2">Matière</th>${S.cols.map(c=>`<th colspan="2">${esc(c.m)}</th>`).join("")}</tr><tr>${S.cols.map(()=>"<th>G</th><th>F</th>").join("")}</tr></thead><tbody>${R.map(r=>`<tr><td class="l">${esc(r.l)}</td>${r.v.map(x=>`<td${r.s?' colspan="2"':""}>${x}</td>`).join("")}</tr>`).join("")}</tbody></table></div><div class="s" style="padding-top:6px">G = garçons, F = filles. Statistiques de la composition.</div>${abandonsHTML(C)}${reusT("Réussite et échec — composition seule (compos × coefficients, seuil 10)",S.cmp,10)}${reusT("Réussite et échec — moyenne de la période (seuil "+fm(S.thr)+")",S.per,S.thr)}`}
   else{const V=LV(S)[sst.v],l=V[1];body=`<div class="s" style="padding:4px 0 8px">${V[0]} : ${l.length} sur ${S.els.length} · seuil ${fm(V[2])}</div><div style="overflow-x:auto"><table class="st"><thead><tr><th>N°</th><th>Nom et prénoms</th><th>Sexe</th><th>Moyenne</th><th>Rang</th></tr></thead><tbody>${l.map((r,i)=>`<tr><td>${i+1}</td><td class="l">${esc(r.e.nom.toUpperCase()+" "+r.e.prenom)}</td><td>${esc(r.e.sexe)}</td><td>${fm(r.ref)}</td><td>${ord(r.rk)}</td></tr>`).join("")||'<tr><td colspan="5">Aucun élève</td></tr>'}</tbody></table></div>`}
   L.innerHTML=`<li class="bul stz" style="padding:12px 14px"><div class="nav2" style="padding:0 0 10px;flex-wrap:wrap;gap:6px">${chip("s","Statistiques")}${chip("ac","Admis compo")}${chip("jc","Ajournés compo")}${chip("ap","Admis période")}${chip("jp","Ajournés période")}</div>${body}<div class="nav2" style="padding:10px 0 0"><button class="btnline" id="spdf">PDF</button><button class="btnline" id="sfm">Fermer</button></div><div class="s" id="smsg" role="status" style="padding-top:6px"></div></li>`;
   L.querySelectorAll("[data-v]").forEach(b=>b.onclick=()=>{sst.v=b.dataset.v;renderStats()});
@@ -1124,8 +1137,9 @@ function renderBulletin(){
   if(!D.rows.length){L.innerHTML=`<li class="hint" style="padding-left:16px">Aucun élève dans cette classe.</li>`;return}
   bst.i=Math.max(0,Math.min(bst.i,D.rows.length-1));
   const B=bulM2(C,bst.p,D,bst.i),M=B.M,d=new Date().toLocaleDateString("fr-FR"),dc=fdate(E.dateConseil)||d,R=bulRender(bulSpec(B,C,bst.p,E,annAll(C),dc,d));
-  L.innerHTML=`<li class="bul"><div style="overflow:auto"><div id="bkw" style="width:${R.wpx}px;height:${R.hpx}px">${R.html}</div></div><div class="nav2" style="padding:8px 14px 4px"><button class="btnline" id="bpv" ${bst.i===0?"disabled":""}>Précédent</button><button class="btnline" id="bnx" ${bst.i===M.eff-1?"disabled":""}>Élève suivant</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bp1">PDF de cet élève</button><button class="btnline" id="bp2">PDF de la classe</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bpr1">Imprimer cet élève</button><button class="btnline" id="bpr2">Imprimer la classe</button></div><div class="s" id="bmsg" role="status" style="padding:0 16px 14px"></div></li>`;
+  L.innerHTML=`<li class="bul">${abandonNoticeHTML(C,bst.p)}<div style="overflow:auto"><div id="bkw" style="width:${R.wpx}px;height:${R.hpx}px">${R.html}</div></div><div class="nav2" style="padding:8px 14px 4px"><button class="btnline" id="bpv" ${bst.i===0?"disabled":""}>Précédent</button><button class="btnline" id="bnx" ${bst.i===M.eff-1?"disabled":""}>Élève suivant</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bp1">PDF de cet élève</button><button class="btnline" id="bp2">PDF de la classe</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bpr1">Imprimer cet élève</button><button class="btnline" id="bpr2">Imprimer la classe</button></div><div class="s" id="bmsg" role="status" style="padding:0 16px 14px"></div></li>`;
   const w=$("#bkw"),av=w.parentElement.clientWidth||360,s=Math.max(.8,Math.min(1.25,(av-4)/R.wpx));w.style.width=(R.wpx*s)+"px";w.style.height=(R.hpx*s)+"px";w.firstChild.style.transform=`scale(${s})`;
+  if($("#abx"))$("#abx").onclick=async()=>{const l=abandonList(C)||[];if(!await confirmUI("Archiver "+l.length+" élève(s) sans notes comme abandons ?","Archiver"))return;l.forEach(e=>archivePush(e,"Abandon"));save();bst.i=0;render()};
   $("#bpv").onclick=()=>{bst.i--;renderBulletin()};$("#bnx").onclick=()=>{bst.i++;renderBulletin()};
   $("#bp1").onclick=()=>dlPDF(C,false);$("#bp2").onclick=()=>dlPDF(C,true);$("#bpr1").onclick=()=>printBulletins(C,false);$("#bpr2").onclick=()=>printBulletins(C,true);
 }
@@ -1137,6 +1151,89 @@ function printBulletins(C,all){
   a.innerHTML=idx.map(k=>`<div class="pbk">${bulRender(bulSpec(bulM2(C,bst.p,D,k),C,bst.p,E,ann,dc,d)).html}</div>`).join("");
   const go=()=>setTimeout(()=>{try{window.print()}catch(e){const m=$("#bmsg");if(m)m.textContent="L’impression n’est pas disponible ici : utilisez le PDF."}},200);
   (document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve()).then(go);
+}
+const PNEXT={"6e":"5e","5e":"4e","4e":"3e","Seconde A":"Première A","Seconde C":"Première C","Seconde D":"Première D","Première A":"Terminale A","Première C":"Terminale C","Première D":"Terminale D"};
+const PKEY="scolanova-avant-parcours";let pcMsg="",showArch=false;
+function archivePush(e,decision,extra){const arch=db.archives=db.archives||[];arch.push(Object.assign({id:e.id,nom:e.nom,prenom:e.prenom,sexe:e.sexe,classe:e.classe,statut:e.statut,naissance:e.naissance||"",decision:decision,annee:anneeSco(),date:new Date().toISOString().slice(0,10),notes:db.notes.filter(n=>n.e===e.id)},extra||{}));db.eleves=db.eleves.filter(x=>x.id!==e.id);db.notes=db.notes.filter(n=>n.e!==e.id)}
+function abandonList(C){const ps=PERS(C),D=bulData(C,ps[ps.length-1]);if(!D.rows.some(r=>r.mg!=null))return null;return D.rows.filter(r=>r.mg==null).map(r=>db.eleves.find(e=>e.id===r.id)).filter(Boolean)}
+function parcoursPlan(){
+  const hasC2=db.classes.some(c=>cyc(c.niveau)===2),sec=db.classes.filter(c=>/^Seconde/.test(c.niveau)).map(c=>c.classe);
+  return clSort(db.classes).map(C=>{
+    const ann=annAll(C),n=C.niveau,ab=abandonList(C),abI=new Set((ab||[]).map(e=>e.id)),st=db.eleves.filter(e=>e.classe===C.classe&&!abI.has(e.id));
+    const adm=[],aj=[],sm=[];
+    st.forEach(e=>{const a=ann.get(e.id);if(!a||a.v==null)sm.push(e);else if(a.v>=+C.passage)adm.push(e);else aj.push(e)});
+    let kind="up",opts=null,choice="",orient=null;
+    if(PNEXT[n])choice=PNEXT[n];
+    else if(n==="3e"){if(hasC2&&sec.length){kind="orient";orient={};opts=sec}else{kind="bepc";choice="bepc"}}
+    else if(n==="Seconde S"){kind="choose";opts=[["","Ne pas déplacer"],["Première C","Première C"],["Première D","Première D"]]}
+    else if(/^Terminale/.test(n)){kind="bac";choice="bac"}
+    return{C,adm,aj,sm,ab:ab||[],abKnown:ab!==null,kind,opts,choice,orient};
+  });
+}
+function parcoursApply(plan,doAb){
+  try{localStorage.setItem(PKEY,JSON.stringify(db))}catch(e){}
+  const r={moved:0,arch:0,rep:0,made:0,ab:0};
+  const target=(p,dest)=>{const C=p.C;let name,c;
+    if(p.kind==="up"){name=dest+C.classe.slice(C.niveau.length);c=db.classes.find(x=>x.classe===name)}
+    else{c=db.classes.find(x=>x.niveau===dest);name=nextName(dest)}
+    if(!c){c={id:db.seq++,classe:name,niveau:dest,cycle:cyc(dest),passage:C.passage};db.classes.push(c);r.made++}
+    return c};
+  plan.forEach(p=>{
+    if(doAb)p.ab.forEach(e=>{archivePush(e,"Abandon");r.ab++});
+    if(p.kind==="choose"&&!p.choice)return;
+    p.adm.forEach(e=>{
+      if(p.kind==="orient"){const c=db.classes.find(x=>x.classe===p.orient[e.id]);if(c){e.classe=c.classe;e.statut="Nouveau";r.moved++}return}
+      if(p.choice==="bepc"||p.choice==="bac"){archivePush(e,p.choice==="bac"?"Admis au Bac 2":"Admis au BEPC");r.arch++}
+      else{const t=target(p,p.choice);e.classe=t.classe;e.statut="Nouveau";r.moved++}
+    });
+    p.aj.forEach(e=>{e.statut="Redoublant";r.rep++});
+  });
+  db.notes=[];db.nat={};db.eleves.forEach(e=>{delete e.nat});
+  save();return r;
+}
+function renderParcours(L){
+  const arch=db.archives||[];
+  L.insertAdjacentHTML("beforeend",`<li class="bul" style="padding:14px 16px;margin-top:10px"><b>Mise à jour du parcours (fin d’année)</b><div class="s">Les élèves dont la moyenne annuelle atteint la moyenne de passage passent en classe supérieure (6e en 5e, 5e en 4e, 4e en 3e, Seconde en Première, Première en Terminale) et deviennent « Nouveau ». Les autres restent dans leur classe et deviennent « Redoublant ». Les élèves sans notes au dernier trimestre peuvent être archivés comme abandons. Les admis de Terminale (et de 3e, cycle 1 seul) sont archivés. Si l’établissement a les deux cycles, vous choisissez la série de chaque admis de 3e. Les notes de l’année sont effacées. Exportez d’abord une sauvegarde.</div><div style="display:grid;gap:8px;margin-top:8px"><button type="button" class="btnline" id="pc_p">Préparer la mise à jour</button><button type="button" class="btnline" id="pc_u" style="display:${localStorage.getItem(PKEY)?"":"none"}">Annuler la dernière mise à jour</button></div><div id="pc_v"></div><div class="s" id="pc_m" role="status" style="padding-top:6px">${esc(pcMsg)}</div><div class="s" style="padding-top:6px">Élèves archivés : ${arch.length} (recherchables dans l’onglet Élèves).</div></li>`);
+  const m=t=>{$("#pc_m").textContent=t};
+  $("#pc_p").onclick=()=>{
+    pcMsg="";const plan=parcoursPlan();if(!plan.length)return m("Aucune classe.");
+    const nAb=plan.reduce((s,p)=>s+p.ab.length,0),dest=p=>p.opts&&p.kind==="choose"?`<select data-i="${plan.indexOf(p)}">${p.opts.map(o=>`<option value="${esc(o[0])}">${esc(o[1])}</option>`).join("")}</select>`:p.kind==="orient"?"Orientation ci-dessous":p.kind==="bac"?"Archivés : admis au Bac 2":p.kind==="bepc"?"Archivés : admis au BEPC":esc(p.choice+p.C.classe.slice(p.C.niveau.length));
+    const ori=plan.filter(p=>p.kind==="orient"&&p.adm.length).map(p=>`<div class="s" style="padding:10px 0 4px"><b>Orientation des admis de ${esc(p.C.classe)}</b> (série et classe de Seconde)</div>${p.opts.length?`<select data-bulk="${plan.indexOf(p)}"><option value="">Tous les élèves de la classe en : …</option>${p.opts.map(o=>`<option>${esc(o)}</option>`).join("")}</select>`:'<div class="s">Créez d’abord les classes de Seconde.</div>'}${p.adm.map(e=>`<div style="display:flex;gap:8px;align-items:center;padding:3px 0"><span class="s" style="flex:1">${esc(e.nom.toUpperCase()+" "+e.prenom)}</span><select data-o="${plan.indexOf(p)}|${e.id}"><option value="">— choisir —</option>${p.opts.map(o=>`<option>${esc(o)}</option>`).join("")}</select></div>`).join("")}`).join("");
+    $("#pc_v").innerHTML=`<div style="overflow-x:auto;margin-top:10px"><table class="st"><thead><tr><th>Classe</th><th>Admis</th><th>Ajournés</th><th>Abandons</th><th>Destination</th></tr></thead><tbody>${plan.map(p=>`<tr><td class="l">${esc(p.C.classe)}</td><td>${p.adm.length}</td><td>${p.aj.length}</td><td>${p.abKnown?p.ab.length:"—"}</td><td class="l">${dest(p)}</td></tr>`).join("")}</tbody></table></div>${ori}${nAb?`<label style="display:flex;gap:8px;align-items:center;padding-top:10px"><input type="checkbox" id="pc_ab" checked><span>Considérer comme abandons les ${nAb} élève(s) sans notes au dernier trimestre et les archiver</span></label>`:""}<div class="s" style="padding-top:6px">« — » : les notes du dernier trimestre ne sont pas encore saisies pour cette classe, aucun abandon n’est détecté. Une classe de destination qui n’existe pas est créée.</div><button type="button" class="ok" id="pc_a" style="width:100%;margin-top:8px">Appliquer la mise à jour</button>`;
+    const V=$("#pc_v");
+    V.querySelectorAll("select[data-i]").forEach(s=>s.onchange=()=>{plan[+s.dataset.i].choice=s.value});
+    V.querySelectorAll("select[data-o]").forEach(s=>s.onchange=()=>{const[i,id]=s.dataset.o.split("|");plan[+i].orient[id]=s.value});
+    V.querySelectorAll("select[data-bulk]").forEach(s=>s.onchange=()=>{const i=+s.dataset.bulk;V.querySelectorAll("select[data-o^='"+i+"|']").forEach(x=>{x.value=s.value;plan[i].orient[x.dataset.o.split("|")[1]]=s.value})});
+    $("#pc_a").onclick=async()=>{
+      const miss=plan.reduce((s,p)=>s+(p.kind==="orient"?p.adm.filter(e=>!p.orient[e.id]).length:0),0);
+      if(miss)return m("Choisissez la série de "+miss+" élève(s) admis de 3e avant d’appliquer.");
+      const doAb=!!($("#pc_ab")&&$("#pc_ab").checked),n=plan.reduce((s,p)=>s+(p.kind==="choose"&&!p.choice?0:p.adm.length),0)+(doAb?nAb:0);
+      if(!await confirmUI("Appliquer la mise à jour : "+n+" élève(s) vont changer de classe ou être archivés, et toutes les notes seront effacées. Une copie de sécurité est gardée pour annuler.","Appliquer"))return;
+      const r=parcoursApply(plan,doAb);pcMsg=r.moved+" élève(s) passés en classe supérieure, "+r.arch+" archivé(s) (admis), "+r.ab+" abandon(s) archivé(s), "+r.rep+" redoublant(s), "+r.made+" classe(s) créée(s). Notes effacées.";render()};
+  };
+  $("#pc_u").onclick=async()=>{if(!await confirmUI("Revenir à l’état d’avant la dernière mise à jour du parcours ?","Revenir"))return;try{db=JSON.parse(localStorage.getItem(PKEY));localStorage.removeItem(PKEY);save();render()}catch(e){m("Impossible de revenir en arrière.")}};
+}
+function openAbandon(){
+  const d=document.createElement("dialog");d.style.cssText="max-width:380px;width:92vw;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:18px";
+  d.innerHTML=`<b>Déclarer un abandon</b><div class="s">L’élève est retiré des listes et gardé dans les archives de l’établissement.</div><label>Classe</label><select id="ab_c"><option value="">Choisir…</option>${cls().map(c=>`<option>${esc(c)}</option>`).join("")}</select><label>Élève</label><select id="ab_e"><option value="">Choisissez d’abord la classe</option></select><label>Date de l’abandon</label><input id="ab_d" type="date" value="${new Date().toISOString().slice(0,10)}"><label>Remarque (facultatif)</label><input id="ab_r"><div class="err" id="ab_m" role="status"></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button type="button" class="btnline" id="ab_n">Annuler</button><button type="button" class="btnline" id="ab_y" style="background:var(--accent);color:var(--on-accent)">Archiver</button></div>`;
+  document.body.appendChild(d);const done=()=>{d.close();d.remove()};
+  d.querySelector("#ab_c").onchange=e=>{const L=db.eleves.filter(x=>x.classe===e.target.value).sort((a,b)=>(a.nom+a.prenom).localeCompare(b.nom+b.prenom,"fr"));d.querySelector("#ab_e").innerHTML='<option value="">Choisir…</option>'+L.map(x=>`<option value="${x.id}">${esc(x.nom.toUpperCase()+" "+x.prenom)}</option>`).join("")};
+  d.querySelector("#ab_n").onclick=done;d.oncancel=done;
+  d.querySelector("#ab_y").onclick=()=>{const id=+d.querySelector("#ab_e").value,e=db.eleves.find(x=>x.id===id);if(!e)return d.querySelector("#ab_m").textContent="Choisissez l’élève.";archivePush(e,"Abandon",{date:d.querySelector("#ab_d").value||new Date().toISOString().slice(0,10),remarque:d.querySelector("#ab_r").value.trim()});save();done();render()};
+  d.showModal();
+}
+function archSection(){
+  const s=q.trim().toLowerCase(),A=(db.archives||[]).filter(a=>(!fc||a.classe===fc)&&(!s||(a.nom+" "+a.prenom).toLowerCase().includes(s)));
+  if(!showArch&&!s)return"";
+  return`<li class="hint">Archives : ${A.length} élève(s)${s?" correspondant à la recherche":""}</li>`+A.map(a=>`<li><div class="row" style="cursor:default"><span class="num">▣</span><span class="txt"><div class="t">${esc(a.nom.toUpperCase()+" "+a.prenom)} · Archivé</div><div class="s">${esc(a.decision)} · ${esc(a.classe)} · ${esc(a.annee)}${a.date?" · "+esc(a.date.split("-").reverse().join("/")):""}${a.remarque?" · "+esc(a.remarque):""}</div></span></div></li>`).join("");
+}
+function abandonsHTML(C){
+  const A=(db.archives||[]).filter(a=>a.decision==="Abandon"&&a.classe===C.classe);
+  return`<div class="s" style="padding:12px 0 4px"><b>Abandons enregistrés — ${esc(C.classe)}</b></div><div class="s">Garçons : ${A.filter(a=>sx(a.sexe)==="Masculin").length} · Filles : ${A.filter(a=>sx(a.sexe)==="Féminin").length} · Total : ${A.length}</div>`;
+}
+function abandonNoticeHTML(C,p){
+  const ps=PERS(C);if(p!==ps[ps.length-1])return"";const l=abandonList(C);if(!l||!l.length)return"";
+  return`<div class="s" style="padding:10px 14px"><b>${l.length} élève(s) sans notes ce trimestre :</b> ${l.map(e=>esc(e.nom.toUpperCase()+" "+e.prenom)).join(", ")}.<br><button type="button" class="btnline" id="abx" style="margin-top:6px">Les considérer comme abandons et les archiver</button></div>`;
 }
 function openEtab(){$("#ef").innerHTML=ETAB.map(f=>`<label>${f[1]}</label>${["ministere","direction","inspection"].includes(f[0])?`<textarea id="e_${f[0]}" rows="2" style="width:100%">${esc(db.etab[f[0]]||"")}</textarea>`:`<input id="e_${f[0]}" value="${esc(db.etab[f[0]]||"")}">`}`).join("");$("#dlg5").showModal()}
 $("#ecl").onclick=()=>$("#dlg5").close();
@@ -1242,34 +1339,78 @@ function readXlsx(file,cb,fail){
   fr.onload=()=>{let d;try{const wb=XLSX.read(new Uint8Array(fr.result),{type:"array",cellDates:true});d=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:"",raw:true})}catch(e){return fail("Ce fichier n’a pas pu être lu. Utilisez un fichier .xlsx ou .csv.")}cb(d)};
   fr.readAsArrayBuffer(file);
 }
-function openNImp(){$("#ni").textContent="Classe : "+nst.c+" · "+nst.p+" · "+nst.m;$("#nf").value="";$("#nt").value="";$("#nerr").textContent="";$("#dlg4").showModal()}
+function openNImp(){$("#ni").textContent="Classe : "+nst.c+" · "+nst.p+" · "+nst.m;$("#nf").value="";$("#nt").value="";$("#ntc").value="i1";$("#nerr").textContent="";$("#dlg4").showModal()}
 $("#nclose").onclick=()=>$("#dlg4").close();
+/* Collage de notes : N°, sexe et classe ignorés ; nom et prénoms en une ou deux colonnes ; en-têtes reconnus s'ils sont collés */
+const NFL=["i1","i2","dv","cp"],NMP={interro1:"i1",int1:"i1",i1:"i1",interro2:"i2",int2:"i2",i2:"i2",devoir:"dv",dev:"dv",dv:"dv",compo:"cp",comp:"cp",composition:"cp",cp:"cp"};
+const NIDN=/^(nometprenoms?|nomsetprenoms?|nomprenoms?|eleves?|candidats?|identite)$/,NSEX=/^(m|f|g|h|masc|fem|masculin|feminin|garcon|fille|homme|femme)$/;
+const nnum=v=>/^[+-]?(\d+([.,]\d*)?|[.,]\d+)$/.test(String(v??"").trim());
+const nAbs=v=>/^(abs|absent|absente|a|-|—|–|\/|nc)$/i.test(String(v??"").trim());
+const ntok=s=>String(s??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().split(/[^a-z]+/).filter(Boolean);
+const nRole=x=>{const n=nk2(x);return NMP[n]||(n==="nom"||n==="noms"?"nom":n==="prenom"||n==="prenoms"?"pre":NIDN.test(n)?"id":null)};
+function nParse(txt,first,pidx,clsKeys){
+  const L=txt.split(/\r?\n/).map(l=>{let c=l.split(/\t|;/);if(c.length===1){const w=l.trim().split(/\s+/);let k=w.length;while(k>1&&nnum(w[k-1]))k--;c=k<w.length?[w.slice(0,k).join(" "),...w.slice(k)]:[l.trim()]}return c.map(x=>x.trim())}).filter(c=>c.some(x=>x!==""));
+  const isH=c=>!c.some(nnum)&&c.some(x=>nRole(x));
+  let k=0;while(k<L.length&&isH(L[k]))k++;
+  const rows=[];
+  if(k>0){
+    const H=L.slice(0,k),W=Math.max(...L.map(c=>c.length)),role=[];
+    for(let c=0;c<W;c++)for(const h of H){const r=nRole(h[c]||"");if(r){role[c]=r;break}}
+    const cols={};role.forEach((r,c)=>{if(NFL.includes(r))(cols[r]=cols[r]||[]).push(c)});
+    L.slice(k).forEach(c=>{
+      const g=r=>c.filter((_,i)=>role[i]===r&&c[i]!=="").join(" "),ident=(g("id")+" "+g("nom")+" "+g("pre")).trim();
+      if(!ident)return;const vals={};
+      NFL.forEach(f=>{const a=cols[f];if(!a)return;const ci=pidx>=0&&a.length>pidx?a[pidx]:a[0],x=c[ci]||"";if(x!==""&&!nAbs(x))vals[f]=x.replace(",",".")});
+      rows.push({ident,vals})});
+  }else{
+    const fi=Math.max(0,NFL.indexOf(first));
+    L.forEach(c0=>{
+      let s=0;while(s<c0.length-1&&nnum(c0[s]))s++;
+      const c=c0.slice(s);let f=c.findIndex(nnum);if(f<0)f=c.length;
+      let lt=-1;for(let i=0;i<f;i++)if(c[i]!=="")lt=i;
+      const id=c.slice(0,f).filter(x=>x!==""&&!NSEX.test(nk2(x))&&!clsKeys.includes(nk2(x))).join(" ");
+      if(!id)return;const vals={};
+      c.slice(lt+1).forEach((x,j)=>{const fl=NFL[fi+j];if(!fl||x===""||nAbs(x))return;vals[fl]=x.replace(",",".")});
+      rows.push({ident:id,vals})});
+  }
+  return rows}
+function nFind(ident,sidx){
+  const t=ntok(ident);if(!t.length)return{};
+  const key=a=>[...a].sort().join(" "),kt=key(t);
+  let m=sidx.filter(s=>key(s.t)===kt);if(m.length===1)return{e:m[0].e};if(m.length>1)return{amb:1};
+  if(t.length<2)return{};
+  m=sidx.filter(s=>t.every(x=>s.t.includes(x)));if(!m.length)m=sidx.filter(s=>s.t.every(x=>t.includes(x)));
+  return m.length===1?{e:m[0].e,part:1}:m.length>1?{amb:1}:{}}
 $("#ngo").onclick=()=>{
-  const f=$("#nf").files[0],err=m=>($("#nerr").textContent=m);const txt=$("#nt").value.trim();if(!f&&!txt){$("#nf").click();return}
-  const run=data=>{
-    if(!data.some(o=>Object.keys(o).some(k=>nk2(k)==="nom")))return err("Aucune colonne « Nom » trouvée. Vérifiez la ligne d’en-têtes.");
-    const idx={};db.eleves.filter(e=>e.classe===nst.c).forEach(e=>{idx[nk(e.nom+e.prenom)]=e});
-    const MP={interro1:"i1",i1:"i1",interro2:"i2",i2:"i2",devoir:"dv",dv:"dv",compo:"cp",composition:"cp",cp:"cp"};
-    const seen={},plan=[],miss=[],dup=[];let inv=0,chg=0;
-    data.forEach(o=>{
-      let nom="",pre="";const vals={};
-      Object.keys(o).forEach(k=>{const n=nk2(k),v=String(o[k]).trim();if(n==="nom")nom=v;else if(n==="prenom"||n==="prenoms")pre=v;else if(MP[n]&&v!=="")vals[MP[n]]=v.replace(",",".")});
-      if(!nom&&!pre)return;
-      const label=(nom+" "+pre).trim(),key=nk(nom+pre);
-      if(seen[key]){dup.push(label);return}seen[key]=1;
-      const e=idx[key];if(!e){miss.push(label);return}
+  const f=$("#nf").files[0],err=m=>($("#nerr").textContent=m),txt=$("#nt").value.trim();if(!f&&!txt){$("#nf").click();return}
+  const runRows=rows=>{
+    if(!rows.length)return err("Aucune ligne reconnue. Collez le nom et les notes de chaque élève.");
+    const sidx=db.eleves.filter(e=>e.classe===nst.c).map(e=>({e,t:ntok(e.nom+" "+e.prenom)}));
+    const seen=new Set(),plan=[],miss=[],dup=[],amb=[];let inv=0,chg=0,part=0,nov=0;
+    rows.forEach(({ident,vals})=>{
+      const r=nFind(ident,sidx);if(r.amb){amb.push(ident);return}if(!r.e){miss.push(ident);return}
+      if(seen.has(r.e.id)){dup.push(ident);return}seen.add(r.e.id);
       Object.keys(vals).forEach(k=>{const x=+vals[k];if(isNaN(x)||x<0||x>20){inv++;delete vals[k]}});
-      const n=getN(e.id,nst.m,nst.p)||{};Object.keys(vals).forEach(k=>{if((n[k]??"")!==""&&+n[k]!==+vals[k])chg++});
-      plan.push({e,vals});
-    });
+      if(!Object.keys(vals).length){nov++;return}
+      if(r.part)part++;
+      const n=getN(r.e.id,nst.m,nst.p)||{};Object.keys(vals).forEach(k=>{if((n[k]??"")!==""&&+n[k]!==+vals[k])chg++});
+      plan.push({e:r.e,vals})});
+    const msg=()=>plan.length+" élève(s) mis à jour."+(part?" "+part+" reconnu(s) par correspondance partielle du nom.":"")+(dup.length?" "+dup.length+" doublon(s) ignoré(s) : le premier est conservé ("+lst5(dup)+").":"")+(amb.length?" "+amb.length+" nom(s) ambigu(s), ignoré(s) ("+lst5(amb)+").":"")+(miss.length?" "+miss.length+" nom(s) introuvable(s) dans la classe "+nst.c+" ("+lst5(miss)+").":"")+(nov?" "+nov+" ligne(s) sans note.":"")+(inv?" "+inv+" note(s) invalide(s) ignorée(s) (0 à 20).":"");
     const apply=()=>{
       plan.forEach(({e,vals})=>{let n=getN(e.id,nst.m,nst.p);if(!n){n={e:e.id,m:nst.m,p:nst.p,i1:"",i2:"",dv:"",cp:""};db.notes.push(n)}Object.assign(n,vals)});
-      save();render();
-      err(plan.length+" élève(s) mis à jour."+(dup.length?" "+dup.length+" doublon(s) ignoré(s) : le premier est conservé ("+lst5(dup)+").":"")+(miss.length?" "+miss.length+" nom(s) introuvable(s) dans cette classe ("+lst5(miss)+").":"")+(inv?" "+inv+" note(s) invalide(s) ignorée(s).":""));
+      save();render();err(msg());
     };
+    if(!plan.length)return err("Aucune note importée."+msg().replace(/^0 élève\(s\) mis à jour\./,""));
     if(chg>0)ask(chg+" note(s) déjà saisie(s) seront remplacées. Continuer ?",apply,()=>err("Import annulé."));else apply();
   };
-  if(txt){const L=txt.split(/\r?\n/).map(l=>l.split(/\t|;/).map(x=>x.trim())).filter(c=>c[0]||c[1]);if(L.length&&isNaN(+(L[0][2]||"0").replace(",",".")))L.shift();run(L.map(c=>({Nom:c[0]||"","Prénoms":c[1]||"","Interro 1":c[2]||"","Interro 2":c[3]||"",Devoir:c[4]||"",Compo:c[5]||""})))}else readXlsx(f,run,err);
+  const run=data=>{
+    const rows=[];let found=false;
+    data.forEach(o=>{let nom="",pre="",idt="";const vals={};
+      Object.keys(o).forEach(k=>{const n=nk2(k),v=String(o[k]).trim();if(n==="nom"||n==="noms"){nom=v;found=true}else if(n==="prenom"||n==="prenoms")pre=v;else if(NIDN.test(n)){idt=v;found=true}else if(NMP[n]&&v!==""&&!nAbs(v))vals[NMP[n]]=v.replace(",",".")});
+      const ident=(idt||nom+" "+pre).trim();if(ident)rows.push({ident,vals})});
+    if(!found)return err("Aucune colonne « Nom » ou « Nom et Prénoms » trouvée. Vérifiez la ligne d’en-têtes.");
+    runRows(rows)};
+  if(txt){const C=db.classes.find(c=>c.classe===nst.c);runRows(nParse(txt,$("#ntc").value,C?PERS(C).indexOf(nst.p):-1,cls().map(nk2)))}else readXlsx(f,run,err);
 };
 $("#pgo").onclick=()=>{
   const c=$("#pcl").value,rows=$("#pt").value.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(l=>{const p=l.split(/\t|;/).map(x=>x.trim());return{nom:p[0],prenom:p[1],sexe:p[2],statut:p[3]}});
