@@ -570,7 +570,7 @@ function renderBulletin(){
   <div class="bh" style="padding-top:0">Nom et prénom : <b>${ENT.eleves.title(D.rows[bst.i].e)}</b> · Matricule : ${D.rows[bst.i].e.id}</div>
   <div class="bt"><table><thead><tr>${BH.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${M.lines.map(tr).join("")}<tr class="tot">${M.tot.map(x=>`<td><b>${esc(x)}</b></td>`).join("")}</tr></tbody></table></div>
   <div class="bt"><table><tbody>${M.others.map(tr).join("")}</tbody></table></div>
-  <div class="bsum"><div><b>Moyenne de la période : ${fm(M.mg)}</b>${M.rk?" · rang "+M.rk:""}</div><div>Travail : ${esc(M.trav)}${M.ment?" · "+M.ment:""}</div><div class="s">Bilan de la classe : ${M.bilan}</div><div class="s">Absences : ------ · Retards : ------ · Conduite : ------</div><div class="s">Observation et décision du conseil :</div><div class="s">Nom et signature du professeur titulaire : ${esc(M.tit)}</div><div class="s">Fait à ${esc(E.lieu)}, le ${new Date().toLocaleDateString("fr-FR")} · Le Directeur : ${esc(E.directeur)}</div><div class="s">Édité le ${new Date().toLocaleDateString("fr-FR")} · Conservez précieusement ce bulletin. Il ne sera délivré aucun duplicata.</div></div>
+  <div class="bsum"><div><b>Moyenne de la période : ${fm(M.mg)}</b>${M.rk?" · rang "+M.rk:""}</div><div>Travail : ${esc(M.trav)}${M.ment?" · "+M.ment:""}</div><div class="s">Bilan de la classe : ${M.bilan}</div><div class="s">Absences : ------ · Retards : ------ · Conduite : ------</div><div class="s">Observation et décision du conseil :</div><div class="s">Nom et signature du professeur titulaire :</div><div class="s" style="margin-left:18px;font-weight:600">${esc(M.tit)}</div><div class="s">Fait à ${esc(E.lieu)}, le ${new Date().toLocaleDateString("fr-FR")} · Le Directeur : ${esc(E.directeur)}</div><div class="s">Édité le ${new Date().toLocaleDateString("fr-FR")} · Conservez précieusement ce bulletin. Il ne sera délivré aucun duplicata.</div></div>
   <div class="nav2" style="padding:8px 14px 4px"><button class="btnline" id="bpv" ${bst.i===0?"disabled":""}>Précédent</button><button class="btnline" id="bnx" ${bst.i===M.eff-1?"disabled":""}>Élève suivant</button></div>
   <div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bp1">PDF de cet élève</button><button class="btnline" id="bp2">PDF de la classe</button></div><div class="s" id="bmsg" role="status" style="padding:0 16px 14px"></div></li>`;
   $("#bpv").onclick=()=>{bst.i--;renderBulletin()};$("#bnx").onclick=()=>{bst.i++;renderBulletin()};
@@ -592,7 +592,7 @@ function bulPDF(C,p,all){
     y=doc.lastAutoTable.finalY+7;
     doc.setFont("helvetica","bold").setFontSize(9).text("Moyenne de la période : "+fm(M.mg)+(M.rk?" · rang "+M.rk:""),12,y);
     doc.setFont("helvetica","normal").text("Travail : "+M.trav+(M.ment?" · "+M.ment:""),12,y+5);
-    doc.text("Bilan de la classe : "+M.bilan,12,y+10);doc.text("Nom et signature du professeur titulaire : "+M.tit,12,y+15);doc.setFontSize(7).text("Conservez précieusement ce bulletin. Il ne sera délivré aucun duplicata.",12,285);doc.setFontSize(9);
+    doc.text("Bilan de la classe : "+M.bilan,12,y+10);doc.text("Nom et signature du professeur titulaire :",12,y+15);doc.setFont("helvetica","bold").text(M.tit,18,y+20);doc.setFontSize(7).setFont("helvetica","normal").text("Conservez précieusement ce bulletin. Il ne sera délivré aucun duplicata.",12,285);doc.setFontSize(9);
     doc.text("Fait à "+E.lieu+", le "+new Date().toLocaleDateString("fr-FR"),198,y+5,{align:"right"});doc.text("Le Directeur",198,y+12,{align:"right"});
     doc.setFont("helvetica","bold").text(E.directeur,198,y+30,{align:"right"});
   });
@@ -1255,8 +1255,8 @@ function bulSpec(B,C,p,E,ann,dc,d){
   cell(t+9,2,"Bilan de la classe",{cs:3,s:9,i:1});cell(t+9,5,"Observation et décision du conseil",{cs:6,s:9});
   [["Forte moyenne",B.mx],["Faible Moyenne",B.mn],["Moy de la classe",B.av]].forEach((a,i)=>{cell(t+10+i,1,a[0],{cs:2,h:"l"});cell(t+10+i,3,a[1]==null?"":fmScore(a[1]),{})});box(t+10,1,t+12,4,"m");
   const nd=decisionConseil(e,C,p,ann);cell(t+10,6,"Travail",{cs:4,s:12});cell(t+11,6,M.trav||"",{cs:4,s:12});if(nd)cell(t+12,6,nd,{cs:4,rs:2,s:8,w:1,v:"t"});box(t+10,6,t+13,9,"m");
-  cell(t+10,10,"Le Directeur",{cs:3,u:1,v:"t"});cell(t+13,1,M.tit||"",{cs:4,s:8,u:1,h:"c"});
-  cell(t+16,1,"Nom et signature du prof titulaire",{cs:4,u:1,h:"c"});cell(t+16,5,(E.lieu||"")+", le",{cs:3,h:"r"});cell(t+16,8,dc,{cs:2,u:1});cell(t+16,10,E.directeur||"",{cs:3,u:1});
+  cell(t+10,10,"Le Directeur",{cs:3,u:1,v:"t"});cell(t+13,1,"Nom et signature du prof titulaire",{cs:4,u:1,h:"c"});
+  cell(t+15,1,M.tit||"",{cs:4,s:8,u:1,h:"c"});cell(t+16,5,(E.lieu||"")+", le",{cs:3,h:"r"});cell(t+16,8,dc,{cs:2,u:1});cell(t+16,10,E.directeur||"",{cs:3,u:1});
   box(1,1,t+16,12,"m");
   cell(t+17,1,"Edité le "+d+"    Conservez précieusement ce bulletin. Il ne sera délivré aucun duplicata",{cs:12,s:9,h:"l",b:0,f:"m"});
   return{W:cx[12],H:ry[hs.length],cells,ln,cx,ry,logo:E.logo?{u:E.logo,x:X(5)+3,y:Y(1)+2,w:X(9)-X(5)-6,h:Y(9)-Y(1)-4}:null};
@@ -1651,6 +1651,7 @@ prepLogo();
     close();document.body.classList.add("locked");ov=document.createElement("div");ov.id="lock";
     ov.innerHTML=`<div class="lbox"><h2 style="margin:0 0 6px">Activer votre accès</h2><div class="s" style="margin-bottom:10px">${msg||"Pour enregistrer vos données, saisissez l’identifiant et le mot de passe remis par votre fournisseur ScolaNova. Sans activation, vous pouvez saisir les classes, matières, professeurs, élèves et notes. Les bulletins, statistiques, emplois du temps, documents PDF et fonctions à distance restent verrouillés."}</div>
     <label>Identifiant</label><input id="lc_u" autocapitalize="off" autocomplete="off"><label>Mot de passe</label><input id="lc_p" autocapitalize="characters" autocomplete="off">
+    <a href="https://wa.me/22890535045?text=Bonjour%2C%20je%20souhaite%20obtenir%20mon%20identifiant%20et%20mon%20mot%20de%20passe%20d%E2%80%99activation%20de%20ScolaNova." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:9px;margin:12px 0;padding:11px;border-radius:9px;background:#25D366;color:#fff;text-decoration:none;font-weight:700"><svg width="23" height="23" viewBox="0 0 32 32" aria-hidden="true" style="fill:currentColor"><path d="M16 .8A15 15 0 0 0 3.1 23.5L1 31l7.7-2A15.1 15.1 0 1 0 16 .8zm0 27.4a12.3 12.3 0 0 1-6.3-1.7l-.5-.3-4.6 1.2 1.2-4.5-.3-.5A12.4 12.4 0 1 1 16 28.2zm6.8-9.2c-.4-.2-2.1-1-2.5-1.1-.3-.1-.6-.2-.8.2-.3.4-.9 1.1-1.1 1.3-.2.3-.4.3-.8.1-.4-.2-1.5-.6-2.9-1.8-1.1-1-1.8-2.1-2-2.5-.2-.4 0-.6.2-.8l.6-.7c.2-.2.3-.4.4-.6.1-.2 0-.5 0-.7-.1-.2-.8-1.9-1.1-2.6-.3-.7-.6-.6-.8-.6h-.7c-.2 0-.7.1-1 .5-.4.4-1.3 1.3-1.3 3.1s1.3 3.6 1.5 3.8c.2.3 2.6 4 6.2 5.5.9.4 1.6.6 2.1.7.9.3 1.7.2 2.3.1.7-.1 2.1-.9 2.4-1.8.3-.9.3-1.7.2-1.8-.1-.2-.3-.3-.7-.5z"/></svg>Nous contacter sur WhatsApp</a>
     <div class="err" id="lc_e" role="alert"></div><div class="btns"><button type="button" id="lc_x">Plus tard</button><button type="button" class="ok" id="lc_ok">Activer</button></div></div>`;
     document.body.appendChild(ov);const q=s=>ov.querySelector(s),e=m=>{q("#lc_e").textContent=m};
     q("#lc_x").onclick=close;
