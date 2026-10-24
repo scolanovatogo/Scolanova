@@ -402,6 +402,31 @@ function profUI(){
   $("#pl").onclick=e=>{const b=e.target.closest(".chip");if(b){tmp.ens=tmp.ens.filter(k=>k!==b.dataset.k);lst();fillM()}};
   lst();fillM();
 }
+function matriculeNumber(v){const n=Number(String(v??"").trim());return Number.isSafeInteger(n)&&n>0?n:null}
+function matriculeSort(a,b){return String(a.nom||"").localeCompare(String(b.nom||""),"fr",{sensitivity:"base"})||String(a.prenom||"").localeCompare(String(b.prenom||""),"fr",{sensitivity:"base"})}
+function initialiserMatriculesExistants(){
+  db.eleves=db.eleves||[];
+  const used=new Set(db.eleves.map(e=>matriculeNumber(e.matricule)).filter(n=>n!==null));
+  const archives=db.archives||[];const archivedNums=archives.map(e=>matriculeNumber(e.matricule)).filter(n=>n!==null);
+  if(!db.eleves.length){if(!Number.isSafeInteger(+db.matriculeNext)||+db.matriculeNext<1)db.matriculeNext=archivedNums.length?Math.max(...archivedNums)+1:null;return}
+  const sorted=[...db.eleves].sort(matriculeSort);
+  if(!used.size){sorted.forEach((e,i)=>{e.matricule=i+1});db.matriculeNext=Math.max(sorted.length,...archivedNums,0)+1;db.matriculeInitialise=true;save();return}
+  let next=Math.max(0,...used)+1;
+  sorted.forEach(e=>{if(matriculeNumber(e.matricule)===null){while(used.has(next))next++;e.matricule=next;used.add(next++);}});
+  db.matriculeNext=Math.max(Number(db.matriculeNext)||1,Math.max(0,...used)+1,Math.max(0,...archivedNums)+1);db.matriculeInitialise=true;save();
+}
+function preparerMatriculeNouveau(){
+  if(!Number.isSafeInteger(+db.matriculeNext)||+db.matriculeNext<1){
+    const reponse=window.prompt("Choisissez le numéro matricule de départ pour le premier élève (laisser vide pour commencer à 1).","1");
+    if(reponse===null)return null;
+    const texte=String(reponse).trim();const depart=texte===""?1:matriculeNumber(texte);
+    if(depart===null){alert("Le numéro matricule doit être un entier positif.");return null}
+    db.matriculeNext=depart;
+  }
+  return +db.matriculeNext;
+}
+function attribuerMatricule(e){const n=preparerMatriculeNouveau();if(n===null)return false;e.matricule=n;db.matriculeNext=n+1;return true}
+
 $("#form").addEventListener("submit",e=>{
   e.preventDefault();const E=ENT[tab],fd=new FormData($("#form")),err=m=>($("#err").textContent=m);let o={};
   if(tab==="classes"){
@@ -415,7 +440,11 @@ $("#form").addEventListener("submit",e=>{
     for(const f of E.f){o[f.k]=(fd.get(f.k)||"").toString().trim();if(f.req&&!o[f.k])return err("Le champ « "+f.l+" » est obligatoire.")}
     const dup=db[tab].some(r=>(!cur||r.id!==cur.id)&&(tab==="matieres"?r.matiere===o.matiere&&r.niveau===o.niveau:(r.nom+r.prenom).toLowerCase()===(o.nom+o.prenom).toLowerCase()&&r.classe===o.classe));
     if(dup)return err("Cet enregistrement existe déjà.");
-    if(cur)Object.assign(cur,o);else db[tab].push({id:db.seq++,...o});
+    if(cur)Object.assign(cur,o);else{
+      const nouveau={id:db.seq++,...o};
+      if(tab==="eleves"&&!attribuerMatricule(nouveau)){db.seq--;return}
+      db[tab].push(nouveau);
+    }
   }
   save();$("#dlg").close();render();
 });
@@ -687,6 +716,24 @@ const xMats=x=>{const m=[];db.matieres.filter(r=>EXN[x.type].includes(r.niveau))
 const xMoy=(x,k,M)=>{const N=x.notes[k]||{};if(!M.some(m=>nn(N[m.n])!=null))return null;const T=M.reduce((s,m)=>s+m.c,0);return T?M.reduce((s,m)=>s+(nn(N[m.n])||0)*m.c,0)/T:null};
 function xGroups(x){const M=xMats(x),I=xCands(x).map(c=>({e:c,ref:xMoy(x,c.k,M)})).filter(r=>r.ref!=null),E=[...new Set(I.map(r=>r.e.etab))].sort();return[{t:"Général",l:I},...E.map(n=>({t:"Établissement : "+n,l:I.filter(r=>r.e.etab===n)}))]}
 function natDec(e,C,p){const ps=PERS(C);if(p!==ps[ps.length-1])return"";const t=C.niveau==="3e"?"BEPC":/^Première/.test(C.niveau)?"Probatoire":/^Terminale/.test(C.niveau)?"Bac 2":"";if(!t||!(db.nat||{})[t])return"";const ok=e.nat&&e.nat[t],f=sx(e.sexe)==="Féminin";return ok?(f?"Admise":"Admis")+" à l’examen du "+t:(f?"Ajournée":"Ajourné")+" à l’examen du "+t}
+function decisionConseil(e,C,p,ann){
+  const ps=PERS(C);if(p!==ps[ps.length-1])return "";
+  const n=String(C.niveau||"").trim(),cl=String(C.classe||"").trim();
+  // Les décisions nationales déjà en place restent inchangées.
+  if(n==="3e"||/^Première/.test(n)||/^Terminale/.test(n))return natDec(e,C,p);
+  const niveaux={"6e":{suivant:"cinquième (5e)",courant:"sixième (6e)"},"5e":{suivant:"quatrième (4e)",courant:"cinquième (5e)"},"4e":{suivant:"troisième (3e)",courant:"quatrième (4e)"}};
+  let info=niveaux[n];
+  // Cycle 2 : la décision de passage est prise au deuxième semestre, uniquement en Seconde.
+  if(/^Seconde\b/i.test(n)||/^Seconde\b/i.test(cl)){
+    const serie=(n+" "+cl).match(/\b(A|C|D|S)\s*1?\b/i);
+    const s=serie?serie[1].toUpperCase():"";
+    // La Seconde S1 suit la dénomination demandée « seconde S ».
+    info={suivant:s==="S"?"seconde S":"première "+(s||"A"),courant:s==="S"?"seconde S":"seconde "+(s||"A"),sansNumero:true};
+  }
+  if(!info)return natDec(e,C,p);
+  const a=(ann||annAll(C)).get(e.id);if(!a||a.v==null||C.passage==null||C.passage===""||!Number.isFinite(+C.passage))return "";
+  return a.v>=+C.passage?"Passe en "+info.suivant:"Redouble la "+info.courant;
+}
 function examPDF(x){
   const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;const doc=new J({unit:"mm",format:"a4"}),E=db.etab;
   doc.setFont("times","bold").setFontSize(11).text([E.nom||"","Résultat de l’examen blanc du "+x.type,"Session du "+x.session],105,14,{align:"center"});let y=34;
@@ -1180,7 +1227,7 @@ function bulSpec(B,C,p,E,ann,dc,d){
   hl(4,10,11);hl(9,10,11);for(let i=5;i<=8;i++)hl(i,10,11);vl(10,4,8);vl(11,4,8);vl(12,4,8);
   // titre, élève
   cell(10,3,"BULLETIN DU "+pname(p).toUpperCase(),{cs:8,s:14});hl(10,3,10,"m");vl(3,10,10,"m");vl(11,10,10,"m");hl(11,3,10,"d");
-  cell(12,1,"Nom et prénom :",{cs:2,s:9,h:"l"});cell(12,3,e.nom.toUpperCase()+" "+e.prenom,{cs:8,s:11,u:1});cell(12,11,"Matricule",{s:9});cell(12,12,String(+B.no).padStart(4,"0"),{s:9,h:"l"});box(12,11,12,12);
+  cell(12,1,"Nom et prénom :",{cs:2,s:9,h:"l"});cell(12,3,e.nom.toUpperCase()+" "+e.prenom,{cs:8,s:11,u:1});cell(12,11,"Matricule",{s:9});cell(12,12,e.matricule==null?"":String(e.matricule),{s:9,h:"l"});box(12,11,12,12);
   // en-tête tableau
   [[1,1,"MATIERES",8],[2,3,"Diverses notes de classes notées sur 20",9],[5,1,"Moy. Classe sur 20",9],[6,1,"Note Comp sur 20",9],[7,1,"Coef",9],[8,1,"Moy. Définitive sur 20",8],[9,1,"Rang",8],[10,1,"Appréciat",9],[11,1,"Professeur",8],[12,1,"Signature",9]].forEach(a=>{cell(14,a[0],a[2],{rs:3,cs:a[1]===3?3:1,s:a[3],w:a[0]===1||a[0]===9||a[0]===7||a[0]===12||a[0]===10?0:1});box(14,a[0],16,a[0]+(a[1]===3?2:0))});
   // corps
@@ -1200,7 +1247,7 @@ function bulSpec(B,C,p,E,ann,dc,d){
   cell(t+8,6,"Conduite : _ _ _ _ _ _ _ _",{cs:4,s:8,h:"l"});box(t+8,6,t+8,9,"d");
   cell(t+9,2,"Bilan de la classe",{cs:3,s:9,i:1});cell(t+9,5,"Observation et décision du conseil",{cs:6,s:9});
   [["Forte moyenne",B.mx],["Faible Moyenne",B.mn],["Moy de la classe",B.av]].forEach((a,i)=>{cell(t+10+i,1,a[0],{cs:2,h:"l"});cell(t+10+i,3,a[1]==null?"":fm(a[1]),{})});box(t+10,1,t+12,4,"m");
-  const nd=natDec(e,C,p);cell(t+10,6,"Travail",{cs:4,s:12});cell(t+11,6,M.trav||"",{cs:4,s:12});if(nd)cell(t+13,6,nd,{cs:4,s:8,w:1});box(t+10,6,t+13,9,"m");
+  const nd=decisionConseil(e,C,p,ann);cell(t+10,6,"Travail",{cs:4,s:12});cell(t+11,6,M.trav||"",{cs:4,s:12});if(nd)cell(t+13,6,nd,{cs:4,s:8,w:1});box(t+10,6,t+13,9,"m");
   cell(t+10,10,"Le Directeur",{cs:3,u:1,v:"t"});cell(t+13,1,"Nom et signature du prof titulaire",{cs:4,u:1,h:"l"});
   cell(t+16,1,M.tit||"",{cs:4,s:8,u:1});cell(t+16,5,(E.lieu||"")+", le",{cs:3,h:"r"});cell(t+16,8,dc,{cs:2,u:1});cell(t+16,10,E.directeur||"",{cs:3,u:1});
   box(1,1,t+16,12,"m");
@@ -1262,7 +1309,7 @@ function printBulletins(C,all){
 }
 const PNEXT={"6e":"5e","5e":"4e","4e":"3e","Seconde A":"Première A","Seconde C":"Première C","Seconde D":"Première D","Première A":"Terminale A","Première C":"Terminale C","Première D":"Terminale D"};
 const PKEY="scolanova-avant-parcours";let pcMsg="",showArch=false;
-function archivePush(e,decision,extra){const arch=db.archives=db.archives||[];arch.push(Object.assign({id:e.id,nom:e.nom,prenom:e.prenom,sexe:e.sexe,classe:e.classe,statut:e.statut,naissance:e.naissance||"",decision:decision,annee:anneeSco(),date:new Date().toISOString().slice(0,10),notes:db.notes.filter(n=>n.e===e.id)},extra||{}));db.eleves=db.eleves.filter(x=>x.id!==e.id);db.notes=db.notes.filter(n=>n.e!==e.id)}
+function archivePush(e,decision,extra){const arch=db.archives=db.archives||[];arch.push(Object.assign({id:e.id,matricule:e.matricule??"",nom:e.nom,prenom:e.prenom,sexe:e.sexe,classe:e.classe,statut:e.statut,naissance:e.naissance||"",decision:decision,annee:anneeSco(),date:new Date().toISOString().slice(0,10),notes:db.notes.filter(n=>n.e===e.id)},extra||{}));db.eleves=db.eleves.filter(x=>x.id!==e.id);db.notes=db.notes.filter(n=>n.e!==e.id)}
 function abandonList(C){const ps=PERS(C),D=bulData(C,ps[ps.length-1]);if(!D.rows.some(r=>r.mg!=null))return null;return D.rows.filter(r=>r.mg==null).map(r=>db.eleves.find(e=>e.id===r.id)).filter(Boolean)}
 function parcoursPlan(){
   const hasC2=db.classes.some(c=>cyc(c.niveau)===2),sec=db.classes.filter(c=>/^Seconde/.test(c.niveau)).map(c=>c.classe);
@@ -1429,13 +1476,15 @@ function openPaste(){
 }
 const nk=x=>String(x??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z]/g,"");
 function addRows(rows,c){
-  let ok=0,bad=0;const dups=[];
+  let ok=0,bad=0;const dups=[];let matriculePret=false;
   rows.forEach(r=>{
     const nom=(r.nom||"").trim(),prenom=(r.prenom||"").trim(),sx=r.sexe||"",st=r.statut||"",c0=(r.classe||"").trim();
     const sexe=/^f/i.test(sx)?"Féminin":/^m/i.test(sx)?"Masculin":"",statut=/^r/i.test(st)?"Redoublant":"Nouveau",cl=c0||c;
     if(!nom||!prenom||!sexe||!cl||!cls().includes(cl)){bad++;return}
     if(db.eleves.some(x=>(x.nom+x.prenom).toLowerCase()===(nom+prenom).toLowerCase()&&x.classe===cl)){dups.push(nom.toUpperCase()+" "+prenom);return}
-    db.eleves.push({id:db.seq++,nom,prenom,sexe,statut,classe:cl,naissance:r.naissance||""});ok++;
+    const nouveau={id:db.seq++,nom,prenom,sexe,statut,classe:cl,naissance:r.naissance||""};
+    if(!matriculePret){if(!attribuerMatricule(nouveau)){db.seq--;bad++;return}matriculePret=true}else{nouveau.matricule=+db.matriculeNext;db.matriculeNext=nouveau.matricule+1}
+    db.eleves.push(nouveau);ok++;
   });
   save();render();return{ok,bad,dups};
 }
@@ -1572,6 +1621,7 @@ $("#back").onclick=()=>{const go=()=>{tab="menu";q="";fc="";render();scrollTo(0,
 $("#nav").onclick=e=>{const b=e.target.closest("button");if(b){const dest=b.dataset.t;if(OUTPUT_TABS.has(dest)&&!requireLicensedOutput(({bulletin:"les bulletins",stats:"les statistiques",examen:"les résultats d’examens",emploi:"les emplois du temps",listes:"les listes et documents PDF"})[dest]))return;commitNotes(()=>{tab=dest;q="";fc="";render();scrollTo(0,0)})}};
 
 db=ENS?(()=>{try{const r=localStorage.getItem(LS);if(r)return JSON.parse(r)}catch(e){}return{classes:[],matieres:[],profs:[],eleves:[],notes:[],seq:1,etab:etabDef()}})():load();db.notes=db.notes||[];db.exams=db.exams||[];db.edt=db.edt||{refus:{},apm:{},jum:false,res:null};db.nat=db.nat||{};db.etab=db.etab||etabDef();
+if(!ENS)initialiserMatriculesExistants();
 if(ENS){document.body.classList.add("ens");ORDER.splice(0,ORDER.length,"notes");tab="notes";try{const c=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(TOK)))));db.sync={url:c.u,key:c.k}}catch(e){}render();ensLoad()}else render();
 window.LOGOJ=window.LOGOJ||{};
 function prepLogo(){const l=db&&db.etab&&db.etab.logo;if(!l||/^data:image\/jpe?g/i.test(l)||window.LOGOJ[l])return;const im=new Image();im.onload=()=>{const c=document.createElement("canvas");c.width=im.width;c.height=im.height;const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,c.width,c.height);g.drawImage(im,0,0);window.LOGOJ[l]=c.toDataURL("image/jpeg",.92)};im.src=l}
