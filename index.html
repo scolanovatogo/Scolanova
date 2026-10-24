@@ -125,7 +125,8 @@ P.text=function(t,x,y,o){
   for(var i=0;i<lines.length;i++){
     var ln=lines[i],xx=x;if(al==="center")xx=x-this._w(ln)/2;else if(al==="right")xx=x-this._w(ln);
     var hex="";for(var j=0;j<ln.length;j++){var b=enc(ln[j]);hex+=(b<16?"0":"")+b.toString(16)}
-    this._pg().push("BT /"+res+" "+this.fs+" Tf "+this._rg(this.tc)+" rg "+(xx*K).toFixed(2)+" "+((this.H-(y+i*lh))*K).toFixed(2)+" Td <"+hex+"> Tj ET");
+    var ag=(+o.angle||0)*Math.PI/180,cs=Math.cos(ag).toFixed(5),sn=Math.sin(ag).toFixed(5),px=(xx*K).toFixed(2),py=((this.H-(y+i*lh))*K).toFixed(2);
+    this._pg().push("BT /"+res+" "+this.fs+" Tf "+this._rg(this.tc)+" rg "+(ag?cs+" "+sn+" -"+sn+" "+cs+" "+px+" "+py+" Tm":px+" "+py+" Td")+" <"+hex+"> Tj ET");
   }return this};
 P.rect=function(x,y,w,h,st){
   st=(st||"S").toUpperCase();var op=st==="F"?"f":(st==="FD"||st==="DF")?"B":"S";
@@ -1249,7 +1250,7 @@ function bulSpec(B,C,p,E,ann,dc,d){
   box(t+2,1,t+5,5,"m");
   cell(t+2,6,"Performances de l’élève",{cs:5,s:10,i:1});["Lettres","Sciences","Autres"].forEach((n,i)=>{cell(t+3+i,6,n,{cs:2,h:"l"});cell(t+3+i,8,B.perf[i]==null?"":fmScore(B.perf[i]),{});cell(t+3+i,9,ap(B.perf[i]),{cs:2,s:10,h:"l"})});box(t+2,6,t+5,10,"m");
   cell(t+2,11,"Mention du conseil de professeurs",{rs:2,cs:2,s:9,w:1});B.ml.forEach((m,i)=>cell(t+4+i,11,m,{cs:2,s:10,i:1}));box(t+2,11,t+6,12,"m");
-  cell(t+6,1,"En lettres :",{cs:2,h:"l"});cell(t+6,3,enLettres(M.mg),{cs:7,s:10,i:1,u:1,h:"l"});
+  cell(t+6,1,"En lettres :",{cs:2,h:"l"});cell(t+6,3,enLettres(PERS(C).indexOf(p)===PERS(C).length-1&&AN.v!=null?AN.v:M.mg),{cs:7,s:10,i:1,u:1,h:"l"});
   // absences / conduite
   cell(t+8,1,"Absences",{s:8,v:"t",h:"l"});cell(t+8,2,"--------",{});box(t+8,2,t+8,2,"m");cell(t+8,3,"Retard",{s:8,v:"t"});cell(t+8,4,"--------",{});box(t+8,4,t+8,4,"m");
   cell(t+8,6,"Conduite : _ _ _ _ _ _ _ _",{cs:4,s:8,h:"l"});box(t+8,6,t+8,9,"d");
