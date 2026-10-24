@@ -345,7 +345,7 @@ const ENT={
   title:r=>esc(r.nom),sub:r=>esc(grp(r.ens)||"Aucun enseignement")+(r.titulaire?" · titulaire "+esc(r.titulaire):""),sort:(a,b)=>a.nom.localeCompare(b.nom)},
  eleves:{h:"Élèves",one:"un élève",lead:"Saisie un par un, ou en collant une liste.",need:()=>db.classes.length?"":"Créez d’abord au moins une classe.",
   f:[{k:"nom",l:"Nom",t:"text",req:1},{k:"prenom",l:"Prénoms",t:"text",req:1},{k:"sexe",l:"Sexe",t:"sel",o:()=>["Masculin","Féminin"],req:1},{k:"statut",l:"Statut",t:"sel",o:()=>["Nouveau","Redoublant"],req:1},{k:"classe",l:"Classe",t:"sel",o:cls,req:1},{k:"naissance",l:"Date de naissance",t:"date"}],
-  title:r=>esc(r.nom.toUpperCase())+" "+esc(r.prenom),sub:r=>esc([r.classe,r.sexe,r.statut].join(", ")),sort:(a,b)=>a.nom.localeCompare(b.nom)||a.prenom.localeCompare(b.prenom)}
+  title:r=>esc(r.nom.toUpperCase())+" "+esc(r.prenom),sub:r=>esc(["Matricule "+(matriculeAffiche(r.matricule)||"—"),r.classe,r.sexe,r.statut].join(", ")),sort:(a,b)=>a.nom.localeCompare(b.nom)||a.prenom.localeCompare(b.prenom)}
 };
 ENT.menu={h:"Menu",lead:"Choisissez une rubrique.",need:()=>""};
 ENT.listes={h:"Listes de classe",lead:"Fiches de relevé de notes et listes nominatives, avec export PDF.",need:()=>db.classes.length?"":"Créez d’abord au moins une classe."};
@@ -362,9 +362,9 @@ function render(){
   const E=ENT[tab],need=E.need();$("#list").className="list";$("#h").textContent=E.h;$("#lead").textContent=E.lead;
   $("#nav").innerHTML=ENS?ORDER.map((k,i)=>`<button role="tab" data-t="${k}" aria-selected="${k===tab}"><b>${i+1}</b>${ENT[k].h}${db[k]?" ("+db[k].length+")":""}</button>`).join(""):(tab==="menu"?"":'<button role="tab" data-t="menu" aria-selected="false"><b>☰</b>Menu</button>');$("#nav").style.display=(!ENS&&tab==="menu")?"none":"";
   if(tab==="menu"||tab==="listes"||tab==="accueil"||tab==="notes"||tab==="bulletin"||tab==="stats"||tab==="examen"||tab==="emploi"){$("#add").style.display="none";return tab==="menu"?renderMenu():tab==="listes"?renderListes():tab==="emploi"?renderEmploi():tab==="examen"?renderExamen():tab==="accueil"?renderAccueil():tab==="notes"?renderNotes():tab==="stats"?renderStats():renderBulletin()}
-  $("#tools").innerHTML=tab==="eleves"?`<input id="q" type="search" placeholder="Rechercher" value="${esc(q)}"><select id="fc" aria-label="Classe"><option value="">Toutes</option>${cls().map(c=>`<option ${c===fc?"selected":""}>${esc(c)}</option>`).join("")}</select><button class="btnline" id="paste">Coller une liste</button><button class="btnline" id="abd">Déclarer un abandon</button><button class="btnline" id="arb">${showArch?"Masquer les archives":"Archives ("+(db.archives||[]).length+")"}</button>`:"";
+  $("#tools").innerHTML=tab==="eleves"?`<input id="q" type="search" placeholder="Nom, prénom ou matricule" value="${esc(q)}"><select id="fc" aria-label="Classe"><option value="">Toutes</option>${cls().map(c=>`<option ${c===fc?"selected":""}>${esc(c)}</option>`).join("")}</select><button class="btnline" id="paste">Coller une liste</button><button class="btnline" id="abd">Déclarer un abandon</button><button class="btnline" id="arb">${showArch?"Masquer les archives":"Archives ("+(db.archives||[]).length+")"}</button>`:"";
   let rows=[...db[tab]];
-  if(tab==="eleves"){const s=q.trim().toLowerCase();rows=rows.filter(r=>(!fc||r.classe===fc)&&(!s||(r.nom+" "+r.prenom).toLowerCase().includes(s)))}
+  if(tab==="eleves"){const s=q.trim().toLowerCase();rows=rows.filter(r=>(!fc||r.classe===fc)&&(!s||(r.nom+" "+r.prenom).toLowerCase().includes(s)||matriculeAffiche(r.matricule).includes(s)||String(r.matricule??"").includes(s)))}
   rows.sort(E.sort);
   if(tab!==lastTab){selMode=false;selIds.clear();lastTab=tab}
   $("#tools").insertAdjacentHTML("beforeend",selMode?`<div class="nav2" style="gap:6px;flex-wrap:wrap;width:100%"><button class="btnline" id="sall">Tout (${rows.length})</button><button class="btnline" id="sdel" style="${selIds.size?"":"opacity:.5"}">Supprimer (${selIds.size})</button><button class="btnline" id="scan">Annuler</button></div>`:`<button class="btnline" id="selb">Sélectionner</button>`);
@@ -404,6 +404,7 @@ function profUI(){
   lst();fillM();
 }
 function matriculeNumber(v){const n=Number(String(v??"").trim());return Number.isSafeInteger(n)&&n>0?n:null}
+function matriculeAffiche(v){const n=matriculeNumber(v);return n===null?"":String(n).padStart(4,"0")}
 function matriculeSort(a,b){return String(a.nom||"").localeCompare(String(b.nom||""),"fr",{sensitivity:"base"})||String(a.prenom||"").localeCompare(String(b.prenom||""),"fr",{sensitivity:"base"})}
 function initialiserMatriculesExistants(){
   db.eleves=db.eleves||[];
@@ -1232,7 +1233,7 @@ function bulSpec(B,C,p,E,ann,dc,d){
   hl(4,10,11);hl(9,10,11);for(let i=5;i<=8;i++)hl(i,10,11);vl(10,4,8);vl(11,4,8);vl(12,4,8);
   // titre, élève
   cell(10,3,"BULLETIN DU "+pname(p).toUpperCase(),{cs:8,s:14});hl(10,3,10,"m");vl(3,10,10,"m");vl(11,10,10,"m");hl(11,3,10,"d");
-  cell(12,1,"Nom et prénom :",{cs:2,s:9,h:"l"});cell(12,3,e.nom.toUpperCase()+" "+e.prenom,{cs:8,s:11,u:1});cell(12,11,"Matricule",{s:9});cell(12,12,e.matricule==null?"":String(e.matricule),{s:9,h:"l"});box(12,11,12,12);
+  cell(12,1,"Nom et prénom :",{cs:2,s:9,h:"l"});cell(12,3,e.nom.toUpperCase()+" "+e.prenom,{cs:8,s:11,u:1});cell(12,11,"Matricule",{s:9});cell(12,12,matriculeAffiche(e.matricule),{s:9,h:"l"});box(12,11,12,12);
   // en-tête tableau
   [[1,1,"MATIERES",8],[2,3,"Diverses notes de classes notées sur 20",9],[5,1,"Moy. Classe sur 20",9],[6,1,"Note Comp sur 20",9],[7,1,"Coef",9],[8,1,"Moy. Définitive sur 20",8],[9,1,"Rang",8],[10,1,"Appréciat",9],[11,1,"Professeur",8],[12,1,"Signature",9]].forEach(a=>{cell(14,a[0],a[2],{rs:3,cs:a[1]===3?3:1,s:a[3],w:a[0]===1||a[0]===9||a[0]===7||a[0]===12||a[0]===10?0:1});box(14,a[0],16,a[0]+(a[1]===3?2:0))});
   // corps
@@ -1253,8 +1254,8 @@ function bulSpec(B,C,p,E,ann,dc,d){
   cell(t+9,2,"Bilan de la classe",{cs:3,s:9,i:1});cell(t+9,5,"Observation et décision du conseil",{cs:6,s:9});
   [["Forte moyenne",B.mx],["Faible Moyenne",B.mn],["Moy de la classe",B.av]].forEach((a,i)=>{cell(t+10+i,1,a[0],{cs:2,h:"l"});cell(t+10+i,3,a[1]==null?"":fm(a[1]),{})});box(t+10,1,t+12,4,"m");
   const nd=decisionConseil(e,C,p,ann);cell(t+10,6,"Travail",{cs:4,s:12});cell(t+11,6,M.trav||"",{cs:4,s:12});if(nd)cell(t+12,6,nd,{cs:4,rs:2,s:8,w:1,v:"t"});box(t+10,6,t+13,9,"m");
-  cell(t+10,10,"Le Directeur",{cs:3,u:1,v:"t"});cell(t+13,1,"Nom et signature du prof titulaire",{cs:4,u:1,h:"l"});
-  cell(t+16,1,M.tit||"",{cs:4,s:8,u:1});cell(t+16,5,(E.lieu||"")+", le",{cs:3,h:"r"});cell(t+16,8,dc,{cs:2,u:1});cell(t+16,10,E.directeur||"",{cs:3,u:1});
+  cell(t+10,10,"Le Directeur",{cs:3,u:1,v:"t"});cell(t+13,1,M.tit||"",{cs:4,s:8,u:1,h:"c"});
+  cell(t+16,1,"Nom et signature du prof titulaire",{cs:4,u:1,h:"c"});cell(t+16,5,(E.lieu||"")+", le",{cs:3,h:"r"});cell(t+16,8,dc,{cs:2,u:1});cell(t+16,10,E.directeur||"",{cs:3,u:1});
   box(1,1,t+16,12,"m");
   cell(t+17,1,"Edité le "+d+"    Conservez précieusement ce bulletin. Il ne sera délivré aucun duplicata",{cs:12,s:9,h:"l",b:0,f:"m"});
   return{W:cx[12],H:ry[hs.length],cells,ln,cx,ry,logo:E.logo?{u:E.logo,x:X(5)+3,y:Y(1)+2,w:X(9)-X(5)-6,h:Y(9)-Y(1)-4}:null};
@@ -1383,9 +1384,9 @@ function openAbandon(){
   d.showModal();
 }
 function archSection(){
-  const s=q.trim().toLowerCase(),A=(db.archives||[]).filter(a=>(!fc||a.classe===fc)&&(!s||(a.nom+" "+a.prenom).toLowerCase().includes(s)));
+  const s=q.trim().toLowerCase(),A=(db.archives||[]).filter(a=>(!fc||a.classe===fc)&&(!s||(a.nom+" "+a.prenom).toLowerCase().includes(s)||matriculeAffiche(a.matricule).includes(s)||String(a.matricule??"").includes(s)));
   if(!showArch&&!s)return"";
-  return`<li class="hint">Archives : ${A.length} élève(s)${s?" correspondant à la recherche":""}</li>`+A.map(a=>`<li><div class="row" style="cursor:default"><span class="num">▣</span><span class="txt"><div class="t">${esc(a.nom.toUpperCase()+" "+a.prenom)} · Archivé</div><div class="s">${esc(a.decision)} · ${esc(a.classe)} · ${esc(a.annee)}${a.date?" · "+esc(a.date.split("-").reverse().join("/")):""}${a.remarque?" · "+esc(a.remarque):""}</div></span></div></li>`).join("");
+  return`<li class="hint">Archives : ${A.length} élève(s)${s?" correspondant à la recherche":""}</li>`+A.map(a=>`<li><div class="row" style="cursor:default"><span class="num">▣</span><span class="txt"><div class="t">${esc(a.nom.toUpperCase()+" "+a.prenom)} · Archivé</div><div class="s">${esc(a.decision)} · Matricule ${esc(matriculeAffiche(a.matricule)||"—")} · ${esc(a.classe)} · ${esc(a.annee)}${a.date?" · "+esc(a.date.split("-").reverse().join("/")):""}${a.remarque?" · "+esc(a.remarque):""}</div></span></div></li>`).join("");
 }
 function abandonsHTML(C){
   const A=(db.archives||[]).filter(a=>a.decision==="Abandon"&&a.classe===C.classe);
