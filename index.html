@@ -1218,7 +1218,7 @@ function bulSpec(B,C,p,E,ann,dc,d){
   const U=[7.3,5.1,5.7,5.1,5.3,5.1,3.3,6.2,3.7,9.2,9.3,7.1],cw=U.map(u=>(u*7+5)*.75),cx=[0];cw.forEach((w,i)=>cx.push(cx[i]+w));
   const G=[[],[],[]];B.rows.forEach(r=>G[r.g].push(r));const SL=[6,4,3],body=[];G.forEach((a,g)=>{a.forEach(r=>body.push(r));for(let i=a.length;i<SL[g];i++)body.push(null)});
   const R=body.length,t=17+R;
-  const hs=[15,15,15,15,15,15,18,15,15.75,18.75,15.75,15.75,15.75,15,15,15.75,...body.map(()=>15),15.75,15.75,15.75,15.75,15,15.75,15.75,15.75,16.5,15.75,15.75,15.75,15.75,15.75,15,15,15.75,15];
+  const hs=[15,15,15,15,15,15,18,15,15.75,18.75,15.75,15.75,15.75,15,15,15.75,...body.map(()=>15),15.75,15.75,15.75,15.75,15,15.75,15.75,15.75,16.5,15.75,15.75,15.75,15.75,15.75,15,15,15.75,15.75,15];
   const ry=[0];hs.forEach((h,i)=>ry.push(ry[i]+h));
   const cells=[],ln=[];
   const wOf=(c,cs)=>cx[c-1+cs]-cx[c-1];
@@ -1257,9 +1257,9 @@ function bulSpec(B,C,p,E,ann,dc,d){
   [["Forte moyenne",B.mx],["Faible Moyenne",B.mn],["Moy de la classe",B.av]].forEach((a,i)=>{cell(t+10+i,1,a[0],{cs:2,h:"l"});cell(t+10+i,3,a[1]==null?"":fmScore(a[1]),{})});box(t+10,1,t+12,4,"m");
   const nd=decisionConseil(e,C,p,ann);cell(t+10,6,"Travail",{cs:4,s:12});cell(t+11,6,M.trav||"",{cs:4,s:12});if(nd)cell(t+12,6,nd,{cs:4,rs:2,s:8,w:1,v:"t"});box(t+10,6,t+13,9,"m");
   cell(t+11,10,"Le Directeur",{cs:3,u:1,v:"t"});cell(t+14,1,"Nom et signature du prof titulaire",{cs:4,u:1,h:"c"});
-  cell(t+16,5,(E.lieu||"")+", le",{cs:3,h:"r"});cell(t+16,8,dc,{cs:2,u:1});cell(t+16,1,M.tit||"",{cs:4,s:8,u:1,h:"c"});cell(t+16,10,E.directeur||"",{cs:3,u:1});
-  box(1,1,t+16,12,"m");
-  cell(t+17,1,"Edité le "+d+"    Conservez précieusement ce bulletin. Il ne sera délivré aucun duplicata",{cs:12,s:9,h:"l",b:0,f:"m"});
+  cell(t+17,5,(E.lieu||"")+", le",{cs:3,h:"r"});cell(t+17,8,dc,{cs:2,u:1});cell(t+17,1,M.tit||"",{cs:4,s:8,u:1,h:"c"});cell(t+17,10,E.directeur||"",{cs:3,u:1});
+  box(1,1,t+17,12,"m");
+  cell(t+18,1,"Edité le "+d+"    Conservez précieusement ce bulletin. Il ne sera délivré aucun duplicata",{cs:12,s:9,h:"l",b:0,f:"m"});
   return{W:cx[12],H:ry[hs.length],cells,ln,cx,ry,watermark:String((window.licName&&window.licName())||E.nom||"").trim(),logo:E.logo?{u:E.logo,x:X(5)+3,y:Y(1)+2,w:X(9)-X(5)-6,h:Y(9)-Y(1)-4}:null};
 }
 function bulRender(S){
