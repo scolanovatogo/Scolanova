@@ -10,7 +10,7 @@
 <link rel="canonical" href="https://scolanovatogo.github.io/Scolanova/">
 <meta property="og:type" content="website"><meta property="og:title" content="ScolaNova – Gestion d’établissement scolaire"><meta property="og:description" content="Notes, bulletins PDF, statistiques et emplois du temps pour les établissements scolaires."><meta property="og:url" content="https://scolanovatogo.github.io/Scolanova/"><meta property="og:site_name" content="ScolaNova"><meta name="application-name" content="ScolaNova">
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "ScolaNova", "alternateName": ["Scola Nova", "ScolaNova logiciel de gestion scolaire"], "url": "https://scolanovatogo.github.io/Scolanova/", "applicationCategory": "EducationalApplication", "operatingSystem": "Web", "inLanguage": "fr", "description": "ScolaNova (Scola Nova) est une application de gestion d’établissement scolaire : classes, élèves, professeurs, saisie des notes, bulletins PDF, statistiques, examens blancs et emplois du temps."}</script>
-<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&display=swap" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&display=swap"></noscript>
 <style>
 :root{--bg:#eef1f6;--surface:#fff;--ink:#16213a;--mute:#5d6882;--line:#c9d6f0;--accent:#c4392d;--on-accent:#fff;--margin:#e3a39b;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1626;--surface:#17203a;--ink:#e8ecf7;--mute:#9aa6c4;--line:#2a3658;--accent:#ef6a5b;--on-accent:#1a0d0b;--margin:#7a3b36}}
@@ -1002,6 +1002,33 @@ const syUrl=p=>String((db.sync||{}).url||"").replace(/\/+$/,"")+"/ecoles/"+(db.s
 async function syPut(p,d){const r=await fetch(syUrl(p),{method:"PUT",body:JSON.stringify(d)});if(!r.ok)throw new Error(r.status);return r.json()}
 async function syGet(p){const r=await fetch(syUrl(p));if(!r.ok)throw new Error(r.status);return r.json()}
 let ensT=null,ensBusy=false,ensErr="",refT=null,ensSt="";
+/* Travail hors connexion : tout est enregistré sur l'appareil ; ce qui n'a pas pu partir au serveur est marqué « en attente »
+   (mémorisé même si l'application est fermée) et renvoyé automatiquement dès que le réseau revient. */
+const PEND="scolanova-sync-attente-"+LS;let dirty=0,nbT=null;
+const syncPending=()=>{try{return !!localStorage.getItem(PEND)}catch(e){return false}};
+function markDirty(){dirty++;try{localStorage.setItem(PEND,String(Date.now()))}catch(e){}netBar()}
+function markClean(d0){if(d0!==dirty)return;const was=syncPending();try{localStorage.removeItem(PEND)}catch(e){}netBar(was?"ok":"")}
+function netBar(flash){
+  let b=document.getElementById("net_bar");const off=navigator.onLine===false,pend=syncPending();let txt="",bg="";
+  if(flash==="ok"){txt="✅ Données synchronisées avec le serveur.";bg="#e6f4ea";clearTimeout(nbT);nbT=setTimeout(()=>netBar(),3500)}
+  else if(off){txt="📴 Hors connexion : vous pouvez continuer à travailler. Tout est enregistré sur cet appareil"+(pend?" et sera envoyé automatiquement dès le retour du réseau.":".");bg="#fff4e0"}
+  else if(pend){txt="🔄 Envoi des modifications en attente…";bg="#e8f0fe"}
+  if(!txt){if(b)b.remove();return}
+  if(!b){b=document.createElement("div");b.id="net_bar";b.setAttribute("role","status");document.body.insertBefore(b,document.body.firstChild)}
+  b.style.cssText="position:sticky;top:0;z-index:20;padding:8px 14px;font:13px/1.35 system-ui,sans-serif;color:#1f2a44;border-bottom:1px solid rgba(0,0,0,.12);background:"+bg;b.textContent=txt}
+const adminSync=()=>!ENS&&db&&db.sync&&db.sync.key&&DB_URL&&window.licOK&&window.licOK();
+async function flushRef(){
+  if(!adminSync())return;if(navigator.onLine===false){netBar();return}
+  const d0=dirty;try{await syncRef();markClean(d0)}catch(e){netBar()}}
+function syncNow(){
+  if(navigator.onLine===false||!syncPending())return;
+  if(ENS){if(!ensBusy)ensPush();return}
+  flushRef()}
+function startSyncRetry(){
+  window.addEventListener("online",()=>{netBar();syncNow();if(adminSync())pullNotes().catch(()=>{})});
+  window.addEventListener("offline",()=>netBar());
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden)syncNow()});
+  setInterval(syncNow,30000);netBar();syncNow()}
 async function pullNotes(){
   const d=(await syGet("notes"))||{};db.seen=db.seen||{};let n=0;
   Object.keys(d).forEach(k=>{const x=d[k];if(!x||x.e==null)return;const sig=JSON.stringify([x.i1,x.i2,x.dv,x.cp]);if(db.seen[k]===sig)return;
@@ -1016,9 +1043,9 @@ function startPull(){
   setInterval(go,20000);document.addEventListener("visibilitychange",go);go();
 }
 async function syncRef(){return syPut("ref",{etab:{nom:db.etab.nom},classes:db.classes.map(c=>({id:c.id,classe:c.classe,niveau:c.niveau,cycle:c.cycle})),matieres:db.matieres.map(x=>({id:x.id,matiere:x.matiere,niveau:x.niveau,coef:x.coef,vol:x.vol})),eleves:db.eleves.map(e=>({id:e.id,nom:e.nom,prenom:e.prenom,sexe:e.sexe,classe:e.classe})),profs:db.profs.map(q=>({id:q.id,nom:q.nom,fam:q.fam,pre:q.pre,ens:q.ens||[],titulaire:q.titulaire||""})),t:Date.now()})}
-function autoRef(){clearTimeout(refT);refT=setTimeout(()=>{syncRef().catch(()=>{})},1500)}
+function autoRef(){markDirty();clearTimeout(refT);refT=setTimeout(flushRef,1500)}
 const ensMsg=t=>{ensSt=t;const l=$("#lead");if(l)l.textContent=t};
-function ensPush(){clearTimeout(ensT);ensT=setTimeout(async()=>{const mp={};db.notes.forEach(n=>{mp[[n.e,n.m,n.p].map(x=>encodeURIComponent(x).replace(/\./g,"%2E")).join("~")]={e:n.e,m:n.m,p:n.p,i1:n.i1,i2:n.i2,dv:n.dv,cp:n.cp}});try{const r=await fetch(syUrl("notes"),{method:"PATCH",body:JSON.stringify(mp)});if(!r.ok)throw 0;ensMsg("Notes envoyées à l’administration.")}catch(e){ensMsg("Pas de connexion : les notes seront renvoyées au prochain enregistrement.")}},500)}
+function ensPush(){markDirty();clearTimeout(ensT);ensT=setTimeout(async()=>{const d0=dirty,mp={};db.notes.forEach(n=>{mp[[n.e,n.m,n.p].map(x=>encodeURIComponent(x).replace(/\./g,"%2E")).join("~")]={e:n.e,m:n.m,p:n.p,i1:n.i1,i2:n.i2,dv:n.dv,cp:n.cp}});try{const r=await fetch(syUrl("notes"),{method:"PATCH",body:JSON.stringify(mp)});if(!r.ok)throw 0;markClean(d0);ensMsg("Notes envoyées à l’administration.")}catch(e){netBar();ensMsg("Pas de connexion : vos notes sont enregistrées sur l’appareil et seront envoyées automatiquement dès le retour du réseau.")}},500)}
 async function ensLoad(){ensBusy=true;try{const d=await syGet("ref");if(d){db.classes=d.classes||[];db.matieres=d.matieres||[];db.eleves=d.eleves||[];db.profs=d.profs||[];db.etab=Object.assign(etabDef(),d.etab||{})}save()}catch(e){ensErr="Impossible de charger les listes ("+((e&&e.message)||"connexion")+").";ensMsg(ensErr)}ensBusy=false;render()}
 function renderSync(L){
   const S=db.sync=db.sync||{url:DB_URL,key:""};if(DB_URL)S.url=DB_URL;
@@ -1267,8 +1294,9 @@ function openWipe(){const d=document.createElement("dialog");d.style.cssText="ma
 function renderMenu(){
   const L=$("#list");L.classList.add("plain");$("#tools").innerHTML="";
   const it=[["accueil","🏫","Établissement","Nom, logo, directeur, accès"],["classes","🏷️","Classes",db.classes.length+" classe(s)"],["matieres","📚","Matières",db.matieres.length+" matière(s)"],["profs","👨‍🏫","Professeurs",db.profs.length+" professeur(s)"],["eleves","🎓","Élèves",db.eleves.length+" élève(s)"],["notes","✍️","Saisie des notes","Par classe et matière"],["bulletin","📄","Bulletins","Affichage et PDF"],["stats","📊","Statistiques","Résultats par classe"],["examen","📝","Examens blancs","Notes et classement"],["emploi","🗓️","Emplois du temps","Génération et PDF"],["listes","📋","Listes de classe","Fiches de relevé de notes"]];
-  L.innerHTML='<li class="mg">'+it.map(i=>`<button type="button" class="mbtn" data-t="${i[0]}"><span class="mi">${i[1]}</span><b>${i[2]}</b><span class="s">${i[3]}</span></button>`).join("")+"</li>"+'<li style="list-style:none;padding:18px 12px 4px"><button type="button" class="btnline" id="wipe" style="width:100%;border-color:#b3261e;color:#b3261e">🗑️ Effacer des données…</button></li>';
+  L.innerHTML='<li class="mg">'+it.map(i=>`<button type="button" class="mbtn" data-t="${i[0]}"><span class="mi">${i[1]}</span><b>${i[2]}</b><span class="s">${i[3]}</span></button>`).join("")+"</li>"+((window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone?"":'<li style="list-style:none;padding:18px 12px 0"><button type="button" class="btnline" id="pwa_btn" style="width:100%">📲 Installer l’application sur ce téléphone</button></li>')+'<li style="list-style:none;padding:18px 12px 4px"><button type="button" class="btnline" id="wipe" style="width:100%;border-color:#b3261e;color:#b3261e">🗑️ Effacer des données…</button></li>';
   $("#wipe").onclick=openWipe;
+  if($("#pwa_btn"))$("#pwa_btn").onclick=()=>{if(window.pwaInstall&&window.pwaInstall())return;confirmUI("Pour installer ScolaNova : sur Android (Chrome), touchez les trois points ⋮ puis « Installer l’application » ou « Ajouter à l’écran d’accueil ». Sur iPhone (Safari), touchez Partager puis « Sur l’écran d’accueil ».","OK")};
   L.querySelectorAll(".mbtn").forEach(b=>b.onclick=()=>{const dest=b.dataset.t;if(OUTPUT_TABS.has(dest)&&!requireLicensedOutput(({bulletin:"les bulletins",stats:"les statistiques",examen:"les résultats d’examens",emploi:"les emplois du temps",listes:"les listes et documents PDF"})[dest]))return;tab=dest;q="";fc="";render();scrollTo(0,0)});
 }
 const lst={c:"",m:""};
@@ -1504,7 +1532,7 @@ prepLogo();
   if(window.licApplyName())try{render()}catch(e){}
 })();
 
-startPull();
+startPull();startSyncRetry();
 </script>
 
 <script>
@@ -1524,6 +1552,7 @@ startPull();
     var y=document.getElementById("pwa_y");
     if(y)y.onclick=function(){if(!dp)return;dp.prompt();dp.userChoice.then(function(){dp=null;if(bar){bar.remove();bar=null}})};
   }
+  window.pwaInstall=function(){if(dp){dp.prompt();dp.userChoice.then(function(){dp=null;if(bar){bar.remove();bar=null}});return true}return false};
   window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();dp=e;show("Installer ScolaNova sur votre téléphone, comme une application ?",true)});
   window.addEventListener("appinstalled",function(){if(bar){bar.remove();bar=null}});
   /* iPhone / iPad (Safari) : pas de bouton automatique possible, on affiche la marche à suivre */
