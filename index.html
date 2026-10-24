@@ -665,7 +665,7 @@ function renderBulletin(){
   <div style="display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:8px"><div>Bilan de la classe<div class="box" style="display:block;margin-top:2px">Moy la plus forte ${fmScore(B.mx)}<br>Moy la plus faible ${fmScore(B.mn)}<br>Moy de la classe ${fmScore(B.av)}</div></div>
    <div style="text-align:center">Observation et décision du conseil<div class="box" style="display:block;margin-top:2px">Travail<br>${esc(M.trav)}${natDec(e,C,bst.p)?"<br>"+esc(natDec(e,C,bst.p)):""}</div></div><div style="text-align:right"><u>Le Directeur</u></div></div>
   <div style="margin-top:6px"><u>Nom et signature du prof titulaire</u></div>
-  <div style="display:flex;justify-content:space-between;margin-top:34px"><u>${esc(M.tit)}</u><u>${esc(E.lieu)}, le ${dc}</u><u>${esc(E.directeur)}</u></div></div></div>
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:8px"><u>${esc(M.tit)}</u><u>${esc(E.lieu)}, le ${dc}</u><u>${esc(E.directeur)}</u></div></div></div>
   <div class="s" style="padding:4px 16px">Edité le ${d} · Conservez précieusement ce bulletin, il ne sera délivré aucun duplicata</div>
   <div class="nav2" style="padding:8px 14px 4px"><button class="btnline" id="bpv" ${bst.i===0?"disabled":""}>Précédent</button><button class="btnline" id="bnx" ${bst.i===M.eff-1?"disabled":""}>Élève suivant</button></div>
   <div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bp1">PDF de cet élève</button><button class="btnline" id="bp2">PDF de la classe</button></div><div class="s" id="bmsg" role="status" style="padding:0 16px 14px"></div></li>`;
@@ -699,8 +699,8 @@ function bulPDF(C,p,all){
     const y2=y1+5;F(1,8);T("Absence",16,y2+3);T("Retard",46,y2+3);doc.rect(12,y2+4,22,5);T("------",23,y2+7.5,{align:"center"});doc.rect(42,y2+4,22,5);T("----------",53,y2+7.5,{align:"center"});doc.rect(76,y2+4,64,5);T("Conduite : _ _ _ _ _ _ _ _ _ _",78,y2+7.5);
     const y3=y2+14;F(1,8);T("Bilan de la classe",14,y3);doc.rect(10,y3+2,56,15);T("Moy la plus forte",12,y3+6);T(fm(B.mx),56,y3+6);T("Moy la plus faible",12,y3+10);T(fm(B.mn),56,y3+10);T("Moy de la classe",12,y3+14);T(fm(B.av),56,y3+14);
     F(0,8);T("Observation et décision du conseil",108,y3,{align:"center"});doc.rect(78,y3+2,60,19);F(1,8);T("Travail",108,y3+7,{align:"center"});T(M.trav||"",108,y3+11,{align:"center"});{const nd=decisionConseil(e,C,p,ann);if(nd){F(1,7);const lines=doc.splitTextToSize(nd,56);doc.text(lines,108,y3+14,{align:"center",lineHeightFactor:1.05})}}T("Le Directeur",198,y3+4,{align:"right"});
-    T("Nom et signature du prof titulaire",12,y3+24);
-    F(1,9);T(M.tit,12,264);T((E.lieu||"")+", le "+dc,105,264,{align:"center"});T(E.directeur||"",198,264,{align:"right"});
+    T("Nom et signature du prof titulaire",12,258);
+    F(1,8);T(M.tit||"",12,264);T((E.lieu||"")+", le "+dc,105,264,{align:"center"});T(E.directeur||"",198,264,{align:"right"});
     F(0,7);T("Edité le "+d+"   Conservez précieusement ce bulletin, il ne sera délivré aucun duplicata",105,274,{align:"center"});
   });
   return doc;
@@ -1256,23 +1256,25 @@ function bulSpec(B,C,p,E,ann,dc,d){
   [["Forte moyenne",B.mx],["Faible Moyenne",B.mn],["Moy de la classe",B.av]].forEach((a,i)=>{cell(t+10+i,1,a[0],{cs:2,h:"l"});cell(t+10+i,3,a[1]==null?"":fmScore(a[1]),{})});box(t+10,1,t+12,4,"m");
   const nd=decisionConseil(e,C,p,ann);cell(t+10,6,"Travail",{cs:4,s:12});cell(t+11,6,M.trav||"",{cs:4,s:12});if(nd)cell(t+12,6,nd,{cs:4,rs:2,s:8,w:1,v:"t"});box(t+10,6,t+13,9,"m");
   cell(t+10,10,"Le Directeur",{cs:3,u:1,v:"t"});cell(t+13,1,"Nom et signature du prof titulaire",{cs:4,u:1,h:"c"});
-  cell(t+15,1,M.tit||"",{cs:4,s:8,u:1,h:"c"});cell(t+16,5,(E.lieu||"")+", le",{cs:3,h:"r"});cell(t+16,8,dc,{cs:2,u:1});cell(t+16,10,E.directeur||"",{cs:3,u:1});
+  cell(t+15,5,(E.lieu||"")+", le",{cs:3,h:"r"});cell(t+15,8,dc,{cs:2,u:1});cell(t+15,1,M.tit||"",{cs:4,s:8,u:1,h:"c"});cell(t+15,10,E.directeur||"",{cs:3,u:1});
   box(1,1,t+16,12,"m");
   cell(t+17,1,"Edité le "+d+"    Conservez précieusement ce bulletin. Il ne sera délivré aucun duplicata",{cs:12,s:9,h:"l",b:0,f:"m"});
-  return{W:cx[12],H:ry[hs.length],cells,ln,cx,ry,logo:E.logo?{u:E.logo,x:X(5)+3,y:Y(1)+2,w:X(9)-X(5)-6,h:Y(9)-Y(1)-4}:null};
+  return{W:cx[12],H:ry[hs.length],cells,ln,cx,ry,watermark:String(E.nom||"").trim(),logo:E.logo?{u:E.logo,x:X(5)+3,y:Y(1)+2,w:X(9)-X(5)-6,h:Y(9)-Y(1)-4}:null};
 }
 function bulRender(S){
-  const rx=194/.3528/S.W,ry=273/.3528/S.H,fs=Math.min(rx,ry),X=v=>(v*rx).toFixed(2),Y=v=>(v*ry).toFixed(2),th={t:.7,m:1.7,d:.7};let h="";
-  S.ln.forEach(l=>{const w=th[l.w],hor=l.y1===l.y2,off=l.w==="d"?[-1,1]:[0];off.forEach(o=>{h+=hor?`<i style="position:absolute;left:${X(l.x1)}pt;top:${(l.y1*ry+o-w/2).toFixed(2)}pt;width:${X(l.x2-l.x1)}pt;height:0;border-top:${w}pt solid #000"></i>`:`<i style="position:absolute;left:${(l.x1*rx+o-w/2).toFixed(2)}pt;top:${Y(l.y1)}pt;width:0;height:${Y(l.y2-l.y1)}pt;border-left:${w}pt solid #000"></i>`})});
-  if(S.logo){const [iw,ih]=imgSize(S.logo.u),a=iw/ih,bw=S.logo.w*rx,bh=S.logo.h*ry,w=Math.min(bw,bh*a),hh=w/a;h+=`<img alt="" src="${S.logo.u}" style="position:absolute;left:${(S.logo.x*rx+(bw-w)/2).toFixed(2)}pt;top:${(S.logo.y*ry+(bh-hh)/2).toFixed(2)}pt;width:${w.toFixed(2)}pt;height:${hh.toFixed(2)}pt">`}
+  const rx=194/.3528/S.W,ry=273/.3528/S.H,fs=Math.min(rx,ry),X=v=>(v*rx).toFixed(2),Y=v=>(v*ry).toFixed(2),th={t:.7,m:1.7,d:.7};
+  let h=S.watermark?`<div aria-hidden="true" style="position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(5,1fr);overflow:hidden;pointer-events:none;z-index:0;color:rgba(40,105,170,.065);font:bold 7pt Georgia,serif">${Array.from({length:10},()=>`<div style="display:flex;align-items:center;justify-content:center;transform:rotate(-35deg);white-space:nowrap">${esc(S.watermark)}</div>`).join("")}</div>`:"";
+  S.ln.forEach(l=>{const w=th[l.w],hor=l.y1===l.y2,off=l.w==="d"?[-1,1]:[0];off.forEach(o=>{h+=hor?`<i style="position:absolute;z-index:1;left:${X(l.x1)}pt;top:${(l.y1*ry+o-w/2).toFixed(2)}pt;width:${X(l.x2-l.x1)}pt;height:0;border-top:${w}pt solid #000"></i>`:`<i style="position:absolute;z-index:1;left:${(l.x1*rx+o-w/2).toFixed(2)}pt;top:${Y(l.y1)}pt;width:0;height:${Y(l.y2-l.y1)}pt;border-left:${w}pt solid #000"></i>`})});
+  if(S.logo){const [iw,ih]=imgSize(S.logo.u),a=iw/ih,bw=S.logo.w*rx,bh=S.logo.h*ry,w=Math.min(bw,bh*a),hh=w/a;h+=`<img alt="" src="${S.logo.u}" style="position:absolute;z-index:1;left:${(S.logo.x*rx+(bw-w)/2).toFixed(2)}pt;top:${(S.logo.y*ry+(bh-hh)/2).toFixed(2)}pt;width:${w.toFixed(2)}pt;height:${hh.toFixed(2)}pt">`}
   S.cells.forEach(c=>{if(!c.t)return;const x=S.cx[c.c-1],w=S.cx[c.c-1+c.cs]-x,y=S.ry[c.r-1],hh=S.ry[c.r-1+c.rs]-y,al={l:"flex-start",c:"center",r:"flex-end"}[c.h],va={t:"flex-start",m:"center",b:"flex-end"}[c.v];
-    h+=`<div style="position:absolute;left:${X(x)}pt;top:${Y(y)}pt;width:${X(w)}pt;height:${Y(hh)}pt;display:flex;align-items:${va};justify-content:${al};overflow:hidden;box-sizing:border-box;padding:0 ${(2*rx).toFixed(1)}pt;font:${c.b?700:400} ${c.i?"italic":"normal"} ${(c.s*fs).toFixed(2)}pt/1.15 ${c.f==="m"?"Consolas,'Courier New',monospace":BKFAM};text-decoration:${c.u?"underline":"none"};text-align:${{l:"left",c:"center",r:"right"}[c.h]};white-space:${c.w?"pre-wrap":"pre"}">${esc(c.t)}</div>`});
-  return{html:`<div class="bk" style="position:relative;width:${X(S.W)}pt;height:${Y(S.H)}pt;background:#fff;color:#000;transform-origin:0 0">${h}</div>`,wpx:S.W*rx*4/3,hpx:S.H*ry*4/3};
+    h+=`<div style="position:absolute;z-index:1;left:${X(x)}pt;top:${Y(y)}pt;width:${X(w)}pt;height:${Y(hh)}pt;display:flex;align-items:${va};justify-content:${al};overflow:hidden;box-sizing:border-box;padding:0 ${(2*rx).toFixed(1)}pt;font:${c.b?700:400} ${c.i?"italic":"normal"} ${(c.s*fs).toFixed(2)}pt/1.15 ${c.f==="m"?"Consolas,'Courier New',monospace":BKFAM};text-decoration:${c.u?"underline":"none"};text-align:${{l:"left",c:"center",r:"right"}[c.h]};white-space:${c.w?"pre-wrap":"pre"}">${esc(c.t)}</div>`});
+  return{html:`<div class="bk" style="position:relative;isolation:isolate;width:${X(S.W)}pt;height:${Y(S.H)}pt;background:#fff;color:#000;transform-origin:0 0">${h}</div>`,wpx:S.W*rx*4/3,hpx:S.H*ry*4/3};
 }
 function bulDraw(doc,S){
   const mx=194/S.W,my=273/S.H,fs=Math.min(mx,my)/.3528,X=v=>8+v*mx,Y=v=>12+v*my;let bk=true;
   if(!doc._bk){try{[["b","bold"],["bi","bolditalic"],["r","normal"],["ri","italic"]].forEach(([k,s])=>{doc.addFileToVFS("bk"+k+".ttf",BKF[k]);doc.addFont("bk"+k+".ttf","ScolaBook",s)});doc._bk=1}catch(e){doc._bk=2}}
   bk=doc._bk===1;doc.setDrawColor(0);doc.setTextColor(0);
+  if(S.watermark){doc.setFont("times","bold");doc.setFontSize(7);doc.setTextColor(238,243,249);for(let yy=42;yy<=245;yy+=48){for(let xx=28;xx<=185;xx+=82){doc.text(String(S.watermark),xx,yy,{angle:-35});}}doc.setTextColor(0);}
   const lw={t:.22,m:.6,d:.22};
   S.ln.forEach(l=>{const hor=l.y1===l.y2;(l.w==="d"?[-.35,.35]:[0]).forEach(o=>{doc.setLineWidth(lw[l.w]);hor?doc.line(X(l.x1),Y(l.y1)+o,X(l.x2),Y(l.y2)+o):doc.line(X(l.x1)+o,Y(l.y1),X(l.x2)+o,Y(l.y2))})});
   if(S.logo){const [iw,ih]=imgSize(S.logo.u),a=iw/ih,bw=S.logo.w*mx,bh=S.logo.h*my,w=Math.min(bw,bh*a),hh=w/a;try{doc.addImage(S.logo.u,/image\/png/.test(S.logo.u)?"PNG":"JPEG",X(S.logo.x)+(bw-w)/2,Y(S.logo.y)+(bh-hh)/2,w,hh)}catch(e){}}
