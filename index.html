@@ -6,7 +6,7 @@
 <title>ScolaNova – Logiciel de gestion d’établissement scolaire : notes, bulletins, emplois du temps</title>
 <meta name="description" content="ScolaNova (Scola Nova) : application de gestion d’établissement scolaire. Classes, élèves, professeurs, saisie des notes à distance, bulletins en PDF, statistiques et emplois du temps.">
 <meta name="robots" content="index,follow">
-<link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#c4392d"><link rel="apple-touch-icon" href="apple-touch-icon.png"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="ScolaNova">
+<script>window.__dp=null;window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();window.__dp=e;try{window.dispatchEvent(new Event("pwa-ready"))}catch(x){}});</script><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#c4392d"><link rel="apple-touch-icon" href="apple-touch-icon.png"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="ScolaNova">
 <link rel="canonical" href="https://scolanovatogo.github.io/Scolanova/">
 <meta property="og:type" content="website"><meta property="og:title" content="ScolaNova – Gestion d’établissement scolaire"><meta property="og:description" content="Notes, bulletins PDF, statistiques et emplois du temps pour les établissements scolaires."><meta property="og:url" content="https://scolanovatogo.github.io/Scolanova/"><meta property="og:site_name" content="ScolaNova"><meta name="application-name" content="ScolaNova">
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "ScolaNova", "alternateName": ["Scola Nova", "ScolaNova logiciel de gestion scolaire"], "url": "https://scolanovatogo.github.io/Scolanova/", "applicationCategory": "EducationalApplication", "operatingSystem": "Web", "inLanguage": "fr", "description": "ScolaNova (Scola Nova) est une application de gestion d’établissement scolaire : classes, élèves, professeurs, saisie des notes, bulletins PDF, statistiques, examens blancs et emplois du temps."}</script>
@@ -383,11 +383,24 @@ function openForm(id){
     tmp={ens:[...(v.ens||[])],take:[]};
     const nvs=[...new Set(db.classes.map(c=>c.niveau))].filter(n=>db.matieres.some(m=>m.niveau===n)).sort((a,b)=>NIV.indexOf(a)-NIV.indexOf(b));
     const ps=profSplit(v.nom?v:"");h=`<label>Nom de famille *</label><input name="fam" value="${esc(ps.fam)}" placeholder="ex. AGBEKO ou AGBEKO KOFFI"><label>Prénoms</label><input name="pre" value="${esc(ps.pre)}" placeholder="ex. Jean Marc"><label>Titulaire de la classe</label><select name="titulaire"><option value="">Aucune</option>${cls().map(c=>`<option ${c===v.titulaire?"selected":""}>${esc(c)}</option>`).join("")}</select><label>Ajouter des enseignements</label><div class="box"><select id="pn"><option value="">Niveau…</option>${nvs.map(n=>`<option>${n}</option>`).join("")}</select><select id="pm"></select><div class="chk" id="pc"></div><button type="button" class="btnline" id="pa">Ajouter à la liste</button></div><div id="pl"></div>`;
-  }else h=gen(E,v);
+  }else{h=gen(E,v);if(tab==="eleves")h+=transfertHTML(v)}
   $("#dt").textContent=(cur?"Modifier ":"Ajouter ")+E.one;$("#fields").innerHTML=h;$("#err").textContent="";$("#del").style.display=cur?"":"none";
   if($("#nv"))$("#nv").onchange=e=>{const n=e.target.value;$("#pv").innerHTML=n?`Classe créée : <b>${nextName(n)}</b>, cycle ${cyc(n)}`:"Choisissez un niveau."};
   if(tab==="profs")profUI();
+  if(tab==="eleves")transfertWire(v);
   $("#dlg").showModal();
+}
+function transfertPeriodes(cl){const C=db.classes.find(c=>c.classe===cl);return C?PERS(C).slice(0,-1):[]}
+function transfertFields(cl,t){
+  if(!cl)return`<div class="s">Choisissez d’abord la classe.</div>`;
+  return transfertPeriodes(cl).map((p,i)=>{const x=t[p]||{};return`<label>Moyenne du ${p}</label><input name="tm${i}" type="number" step="0.01" min="0" max="20" value="${esc(x.mg??"")}"><label>Rang du ${p}</label><input name="tr${i}" type="number" step="1" min="1" value="${esc(x.rk??"")}">`}).join("")}
+function transfertHTML(v){const on=!!v.transfert&&Object.keys(v.transfert).length>0;
+  return`<label style="display:flex;gap:8px;align-items:center;margin-top:14px"><input type="checkbox" id="trc" ${on?"checked":""}> Élève venu d’un autre établissement (année en cours)</label><div id="trf" style="display:${on?"block":"none"}"><div class="s">Reportez les moyennes et rangs figurant sur ses bulletins : ils seront conservés et pris en compte dans la moyenne annuelle.</div><div id="trp">${transfertFields(v.classe,v.transfert||{})}</div></div>`}
+function transfertWire(v){
+  const c=$("#trc");if(!c)return;
+  c.onchange=()=>{$("#trf").style.display=c.checked?"block":"none"};
+  const sc=document.querySelector('#fields [name="classe"]');
+  if(sc)sc.onchange=()=>{$("#trp").innerHTML=transfertFields(sc.value,v.transfert||{})};
 }
 function profUI(){
   const lst=()=>{$("#pl").innerHTML=tmp.ens.length?tmp.ens.sort().map(k=>`<button type="button" class="chip" data-k="${esc(k)}">${esc(k.replace("|"," - "))} ✕</button>`).join(""):`<div class="s">Aucun enseignement pour l’instant.</div>`};
@@ -441,6 +454,14 @@ $("#form").addEventListener("submit",e=>{
     if(cur)Object.assign(cur,o);else db.profs.push({id:db.seq++,...o});
   }else{
     for(const f of E.f){o[f.k]=(fd.get(f.k)||"").toString().trim();if(f.req&&!o[f.k])return err("Le champ « "+f.l+" » est obligatoire.")}
+    if(tab==="eleves"){
+      if($("#trc")&&$("#trc").checked){const ps=transfertPeriodes(o.classe),tr={};
+        for(let i=0;i<ps.length;i++){const m=(fd.get("tm"+i)||"").toString().trim().replace(",","."),r=(fd.get("tr"+i)||"").toString().trim();if(m===""&&r==="")continue;
+          if(m===""||r==="")return err("Pour le "+ps[i]+", indiquez la moyenne et le rang.");
+          const mv=+m,rv=+r;if(!(mv>=0&&mv<=20))return err("Moyenne du "+ps[i]+" : entrez une valeur entre 0 et 20.");
+          if(!Number.isInteger(rv)||rv<1)return err("Rang du "+ps[i]+" : entrez un nombre entier supérieur à 0.");tr[ps[i]]={mg:mv,rk:rv}}
+        if(!Object.keys(tr).length)return err("Renseignez au moins une moyenne et un rang de l’établissement d’origine.");o.transfert=tr}
+      else o.transfert=null}
     const dup=db[tab].some(r=>(!cur||r.id!==cur.id)&&(tab==="matieres"?r.matiere===o.matiere&&r.niveau===o.niveau:(r.nom+r.prenom).toLowerCase()===(o.nom+o.prenom).toLowerCase()&&r.classe===o.classe));
     if(dup)return err("Cet enregistrement existe déjà.");
     if(cur)Object.assign(cur,o);else{
@@ -505,10 +526,10 @@ function renderNotes(){if(ENS&&ensSt)$("#lead").textContent=ensSt;
     if(nst.foc){nst.foc=false;const fi=L.querySelector("input");if(fi)fi.focus()}
   }else{
     const mats=db.matieres.filter(m=>m.niveau===C.niveau);
-    const res=els.map(e=>{let s=0,k=0,c=0;mats.forEach(m=>{const r=calc(getN(e.id,m.matiere,nst.p),+m.coef);if(r.mo!=null){s+=r.mp;k+=+m.coef;c++}});return{e,mg:k?s/k:null,c}});
+    const res=els.map(e=>{const tt=(e.transfert||{})[nst.p];if(tt&&nn(tt.mg)!=null)return{e,mg:nn(tt.mg),c:0,imp:1,irk:tt.rk};let s=0,k=0,c=0;mats.forEach(m=>{const r=calc(getN(e.id,m.matiere,nst.p),+m.coef);if(r.mo!=null){s+=r.mp;k+=+m.coef;c++}});return{e,mg:k?s/k:null,c}});
     res.sort((a,b)=>(b.mg??-1)-(a.mg??-1));
-    res.forEach((r,i)=>{r.rk=r.mg==null?null:(i&&res[i-1].mg!=null&&Math.round(res[i-1].mg*100)===Math.round(r.mg*100)?res[i-1].rk:i+1)});
-    L.innerHTML=res.map(r=>`<li><div class="row" style="cursor:default"><span class="num">${r.rk??"—"}</span><span class="txt"><div class="t">${ENT.eleves.title(r.e)}</div><div class="s">Moyenne générale ${fm(r.mg)} · ${r.c} matière(s) sur ${mats.length}</div></span></div></li>`).join("");
+    const rr=res.filter(r=>!r.imp);rr.forEach((r,i)=>{r.rk=r.mg==null?null:(i&&rr[i-1].mg!=null&&Math.round(rr[i-1].mg*100)===Math.round(r.mg*100)?rr[i-1].rk:i+1)});res.forEach(r=>{if(r.imp)r.rk=r.irk});
+    L.innerHTML=res.map(r=>`<li><div class="row" style="cursor:default"><span class="num">${r.rk??"—"}</span><span class="txt"><div class="t">${ENT.eleves.title(r.e)}</div><div class="s">Moyenne générale ${fm(r.mg)} · ${r.imp?"reprise de l’établissement d’origine":r.c+" matière(s) sur "+mats.length}</div></span></div></li>`).join("");
   }
 }
 function notesInput(e){
@@ -535,192 +556,22 @@ function rkOf(list,key){const a=list.filter(x=>x[key]!=null).sort((x,y)=>y[key]-
 function bulData0(C,p){
   const els=db.eleves.filter(e=>e.classe===C.classe).sort(ENT.eleves.sort);
   const mats=db.matieres.filter(m=>m.niveau===C.niveau);
-  const rows=els.map(e=>{const per={};let s=0,k=0;mats.forEach(m=>{const r=calc(getN(e.id,m.matiere,p),+m.coef);per[m.matiere]=r;if(r.mo!=null){s+=r.mp;k+=+m.coef}});return{id:e.id,e,per,mg:k?s/k:null,s,k}});
-  return{mats,rows,rkG:rkOf(rows,"mg")};
+  const rows=els.map(e=>{const tt=(e.transfert||{})[p];if(tt&&nn(tt.mg)!=null){const per0={};mats.forEach(m=>{per0[m.matiere]={}});return{id:e.id,e,per:per0,mg:nn(tt.mg),s:0,k:0,imp:1,impRk:tt.rk}}const per={};let s=0,k=0;mats.forEach(m=>{const r=calc(getN(e.id,m.matiere,p),+m.coef);per[m.matiere]=r;if(r.mo!=null){s+=r.mp;k+=+m.coef}});return{id:e.id,e,per,mg:k?s/k:null,s,k}});
+  const rkG=rkOf(rows.filter(r=>!r.imp),"mg");rows.forEach(r=>{if(r.imp)rkG[r.id]=r.impRk});
+  return{mats,rows,rkG};
 }
-// Fin d'année : si la moyenne de passage est inférieure à 10 (ex. 9,5), un élève choisi par l'administration (db.bonus, avec motif) dont la moyenne annuelle atteint ce seuil est amené à 10,00.
-// Des points sont ajoutés aux notes de composition du dernier trimestre/semestre : au plus BONUS_MAX par matière, répartis le plus également possible (écart type ≤ 1).
-// Si 10,00 n'est pas atteignable dans ces limites, la moyenne de passage retenue est trop faible : aucun point n'est ajouté. Les notes saisies ne sont jamais modifiées.
-const BONUS_MAX=3;
-function bonusPlan(D,r,Oth,p){
-  const oth=Oth.map(d=>d.rows.find(y=>y.id===r.id).mg).filter(v=>v!=null),n=oth.length+1,so=oth.reduce((a,b)=>a+b,0),need=(10*n-so)-r.mg;
-  if(need<=1e-9)return{ok:true,add:{}};
-  const c=D.mats.map(m=>{const nt=getN(r.id,m.matiere,p);return{m:m.matiere,cp:nn(nt&&nt.cp),coef:+m.coef,mo:r.per[m.matiere].mo}}).filter(o=>o.mo!=null&&o.cp!=null);
-  if(!c.length)return{ok:false,why:"aucune note de composition"};
-  const cap=o=>Math.max(0,Math.min(BONUS_MAX,20-o.cp)),f=x=>c.reduce((a,o)=>a+o.coef*Math.min(x,cap(o)),0)/(2*r.k);
-  if(f(BONUS_MAX)<need-1e-9)return{ok:false,why:"plus de "+BONUS_MAX+" points par matière seraient nécessaires"};
-  let lo=0,hi=BONUS_MAX;for(let i=0;i<60;i++){const mid=(lo+hi)/2;if(f(mid)>=need)hi=mid;else lo=mid}
-  let b=Math.ceil(hi*1e4)/1e4;while(f(b)<need&&b<BONUS_MAX)b=Math.min(BONUS_MAX,b+1e-4);
-  const add={};c.forEach(o=>{const x=Math.min(b,cap(o));if(x>0)add[o.m]=x});
-  const v=c.map(o=>add[o.m]||0),mu=v.reduce((a,x)=>a+x,0)/v.length,sd=Math.sqrt(v.reduce((a,x)=>a+(x-mu)*(x-mu),0)/v.length);
-  if(sd>1)return{ok:false,why:"répartition trop inégale entre les matières"};
-  return{ok:true,add};
-}
-function bulDataB(C,p){
-  const D=bulData0(C,p),ps=PERS(C),th=C.passage==null||String(C.passage).trim()===""?NaN:Number(String(C.passage).replace(",","."));
-  if(!ps.length||p!==ps[ps.length-1]||!Number.isFinite(th)||th>=10)return D;
-  const O=ps.slice(0,-1).map(pp=>bulData0(C,pp));
-  D.rows.forEach(r=>{
-    if(r.mg==null||!((db.bonus||{})[C.classe]||{})[r.id])return;   // seuls les élèves choisis par l'administration
-    const oth=O.map(d=>d.rows.find(y=>y.id===r.id).mg).filter(v=>v!=null),n=oth.length+1,ann=(oth.reduce((a,b)=>a+b,0)+r.mg)/n;
-    if(ann>=10||ann<th-1e-9)return;
-    const pl=bonusPlan(D,r,O,p);if(!pl.ok||!Object.keys(pl.add).length)return;
-    let s2=0,k2=0;
-    D.mats.forEach(m=>{
-      if(pl.add[m.matiere]){const nt=getN(r.id,m.matiere,p);r.per[m.matiere]=calc(Object.assign({},nt,{cp:nn(nt.cp)+pl.add[m.matiere]}),+m.coef)}
-      const q=r.per[m.matiere];if(q.mo!=null){s2+=q.mp;k2+=+m.coef}
-    });
-    r.s=s2;r.k=k2;r.mg=k2?s2/k2:null;r.bonus=pl.add;
-  });
-  D.rkG=rkOf(D.rows,"mg");
-  return D;
-}
-// ---------- Réclamations de notes : classements figés une fois les bulletins distribués ----------
-function reclDB(){db.recl=db.recl||{};db.recl.snap=db.recl.snap||{};db.recl.ann=db.recl.ann||{};db.recl.log=db.recl.log||[];return db.recl}
-function effRank(fz,id,val){   // rang d'un élève dont la moyenne a changé, par rapport aux moyennes figées des autres
-  if(val==null)return null;const r=Math.round(val*100);let g=0;
-  for(const k in fz.v){if(String(k)===String(id)||fz.v[k]==null)continue;const o=Math.round(fz.v[k]*100);if(o===r)return fz.rk[k];if(o>r)g++}
-  return g+1;
-}
-function claimIds(C,P){return new Set(((db.recl||{}).log||[]).filter(l=>l.classe===C.classe&&(P==null||l.periode===P)).map(l=>String(l.id)))}
-function claimMats(C,P){return new Set(((db.recl||{}).log||[]).filter(l=>l.classe===C.classe&&l.periode===P).map(l=>l.id+"|"+l.matiere))}
-function bulData(C,p){
-  const D=bulDataB(C,p),fz=((db.recl||{}).snap||{})[C.classe+"|"+p];if(!fz)return D;
-  const cl=claimIds(C,p);D.fz=fz;D.claim=cl;D.claimM=claimMats(C,p);D.rkG=Object.assign({},D.rkG);
-  D.rows.forEach(r=>{if(cl.has(String(r.id))){const v=effRank(fz,r.id,r.mg);if(v!=null)D.rkG[r.id]=v}else if(fz.rk[r.id]!=null)D.rkG[r.id]=fz.rk[r.id]});
-  return D;
-}
-function stOf(a){const v=a.filter(x=>x!=null);return{mx:v.length?Math.max(...v):null,mn:v.length?Math.min(...v):null,av:v.length?v.reduce((x,y)=>x+y,0)/v.length:null}}
-function freezePeriod(C,P){
-  const R=reclDB(),key=C.classe+"|"+P;if(R.snap[key])return false;
-  const D=bulData(C,P),today=new Date().toISOString().slice(0,10),fz={v:{},rk:{},m:{},at:today};
-  D.rows.forEach(r=>{fz.v[r.id]=r.mg;if(D.rkG[r.id]!=null)fz.rk[r.id]=D.rkG[r.id]});
-  D.mats.forEach(m=>{const v={},rk=rkOf(D.rows.map(x=>({id:x.id,mo:x.per[m.matiere].mo})),"mo");D.rows.forEach(x=>{v[x.id]=x.per[m.matiere].mo});fz.m[m.matiere]={v,rk}});
-  fz.st=stOf(D.rows.map(x=>x.mg));R.snap[key]=fz;
-  const ps=PERS(C);
-  if(P===ps[ps.length-1]&&!R.ann[C.classe]){const A=annAll(C),L=[...A.entries()].map(([id,x])=>({id,v:x.v})),rk=rkOf(L,"v"),a={v:{},rk:{},at:today};L.forEach(o=>{a.v[o.id]=o.v;a.rk[o.id]=rk[o.id]});a.st=stOf(L.map(o=>o.v));R.ann[C.classe]=a}
-  save();return true;
-}
-// ---------- Formulaire de réclamation de notes ----------
-let rclOpen=false;const rst={p:"",id:"",m:"",f:"cp"};
-const RCF={i1:"Interrogation 1",i2:"Interrogation 2",dv:"Devoir",cp:"Composition"};
-const fdl=d=>d?String(d).slice(0,10).split("-").reverse().join("/"):"";
-function reclHTML(C){return`<div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="rcb">Réclamation de notes</button></div><div id="rcx" style="display:${rclOpen?"block":"none"};padding:0 14px 8px">${rclOpen?reclPanel(C):""}</div>`}
-function reclPanel(C){
-  const ps=PERS(C),els=db.eleves.filter(e=>e.classe===C.classe).sort(ENT.eleves.sort),mats=db.matieres.filter(m=>m.niveau===C.niveau);
-  if(!ps.includes(rst.p))rst.p=ps.includes(bst.p)?bst.p:ps[0]||"";
-  const o=(a,v)=>a.map(x=>`<option value="${esc(x[0])}" ${String(x[0])===String(v)?"selected":""}>${esc(x[1])}</option>`).join(""),
-    n=rst.id&&rst.m?getN(+rst.id,rst.m,rst.p):null,old=n?nn(n[rst.f]):null,fz=((db.recl||{}).snap||{})[C.classe+"|"+rst.p];
-  const L=((db.recl||{}).log||[]).filter(l=>l.classe===C.classe);
-  return`<div class="s" style="padding-bottom:6px">Une fois les bulletins distribués, toute correction de note passe par ce formulaire : seule la moyenne et le rang de l’élève concerné sont recalculés, par rapport aux classements déjà remis aux autres élèves (qui ne changent pas).</div>
-  <div style="display:grid;gap:8px"><select id="rp">${o(ps.map(x=>[x,x]),rst.p)}</select><select id="re"><option value="">Élève…</option>${o(els.map(e=>[e.id,e.nom.toUpperCase()+" "+e.prenom]),rst.id)}</select><select id="rm"><option value="">Matière…</option>${o(mats.map(m=>[m.matiere,m.matiere]),rst.m)}</select><select id="rf">${o(Object.entries(RCF),rst.f)}</select>
-  <div>Ancienne note : <b>${rst.id&&rst.m?(old==null?"non saisie":fmScore(old)):"—"}</b></div><input id="rn" inputmode="decimal" placeholder="Nouvelle note sur 20"><input id="rj" placeholder="Motif ou référence de la réclamation"><button class="btnline" id="rv">Valider la réclamation</button></div>
-  <div class="s" id="rcm" role="status" style="padding:6px 0">${fz?"Classements de cette période figés le "+fdl(fz.at)+".":"Classements de cette période pas encore figés : ils le seront automatiquement à la première réclamation."}</div>
-  ${fz?"":`<div class="nav2" style="padding:0 0 6px"><button class="btnline" id="rz">Figer maintenant (bulletins distribués)</button></div>`}
-  ${L.length?`<div style="overflow-x:auto"><table class="st"><thead><tr><th>Date</th><th>Élève</th><th>Période</th><th>Matière</th><th>Note</th><th>Ancienne</th><th>Nouvelle</th><th>Moyenne</th><th>Rang</th><th>Motif</th><th></th></tr></thead><tbody>${L.map((l,i)=>`<tr><td>${fdl(l.date)}</td><td class="l">${esc(l.eleve)}</td><td>${esc(l.periode)}</td><td class="l">${esc(l.matiere)}</td><td>${esc(RCF[l.champ])}</td><td>${l.ancienne==null?"—":fmScore(l.ancienne)}</td><td>${fmScore(l.nouvelle)}</td><td>${fmScore(l.moyAv)} → ${fmScore(l.moyAp)}</td><td>${l.rkAv==null?"—":ord(l.rkAv)} → ${l.rkAp==null?"—":ord(l.rkAp)}</td><td class="l">${esc(l.motif)}</td><td><button class="btnline rfp" data-i="${((db.recl||{}).log||[]).indexOf(l)}">Fiche</button></td></tr>`).join("")}</tbody></table></div>`:""}`;
-}
-function reclApply(C){
-  const m=t=>{const b=$("#rcm");if(b)b.textContent=t},P=rst.p,id=+rst.id,mat=rst.m,f=rst.f,nv=nn(String($("#rn").value).trim().replace(",",".")),mo=String($("#rj").value||"").trim();
-  if(!P||!id||!mat)return m("Choisissez la période, l’élève et la matière.");
-  if(nv==null||nv<0||nv>20)return m("La nouvelle note doit être un nombre entre 0 et 20.");
-  if(!mo)return m("Indiquez le motif ou la référence de la réclamation.");
-  freezePeriod(C,P);
-  const D0=bulData(C,P),r0=D0.rows.find(x=>x.id===id),e=db.eleves.find(x=>x.id===id);let n=getN(id,mat,P);
-  const old=n?nn(n[f]):null;if(old!==null&&old===nv)return m("La nouvelle note est identique à l’ancienne.");
-  if(!n){n={e:id,m:mat,p:P,i1:"",i2:"",dv:"",cp:""};db.notes.push(n)}
-  const moyAv=r0.mg,rkAv=D0.rkG[id]==null?null:D0.rkG[id];
-  n[f]=String(nv);
-  const R=reclDB(),ent={id,eleve:e.nom.toUpperCase()+" "+e.prenom,classe:C.classe,periode:P,matiere:mat,champ:f,ancienne:old,nouvelle:nv,motif:mo,date:new Date().toISOString().slice(0,10),moyAv,moyAp:null,rkAv,rkAp:null};
-  R.log.push(ent);const D1=bulData(C,P),r1=D1.rows.find(x=>x.id===id);ent.moyAp=r1.mg;ent.rkAp=D1.rkG[id]==null?null:D1.rkG[id];
-  save();rclOpen=true;renderBulletin();
-}
-function reclPDF(l){
-  const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;const doc=new J({unit:"mm",format:"a4"}),E=db.etab;
-  doc.setFont("times","bold").setFontSize(12).text([E.nom||"","Année scolaire "+anneeSco()],105,14,{align:"center"});
-  doc.setFontSize(15).text("FICHE DE RÉCLAMATION DE NOTE",105,34,{align:"center"});
-  const rows=[["Élève",l.eleve],["Classe",l.classe],["Période",l.periode],["Matière",l.matiere],["Note concernée",RCF[l.champ]],["Ancienne note",l.ancienne==null?"non saisie":fmScore(l.ancienne)],["Nouvelle note",fmScore(l.nouvelle)],["Moyenne de la période",fmScore(l.moyAv)+"  →  "+fmScore(l.moyAp)],["Rang",(l.rkAv==null?"—":ord(l.rkAv))+"  →  "+(l.rkAp==null?"—":ord(l.rkAp))],["Motif / référence",l.motif],["Date",fdl(l.date)]];
-  let y=52;rows.forEach(r=>{doc.setFont("times","bold").setFontSize(11).text(r[0]+" :",20,y);doc.setFont("times","normal");const t=doc.splitTextToSize(String(r[1]),120);doc.text(t,72,y);y+=Math.max(9,t.length*6)});
-  doc.setFont("times","italic").setFontSize(9).text(doc.splitTextToSize("Seuls la moyenne et le rang de l’élève concerné ont été recalculés ; les classements remis aux autres élèves restent inchangés.",170),20,y+4);
-  doc.setFont("times","normal").setFontSize(11).text("Le professeur de la matière",20,y+28);doc.text("Le Directeur",190,y+28,{align:"right"});doc.text(E.directeur||"",190,y+48,{align:"right"});
-  return doc;
-}
-function bindRecl(C){
-  const b=$("#rcb");if(!b)return;const x=$("#rcx");
-  const wire=()=>{
-    const re=()=>{x.innerHTML=reclPanel(C);wire()};
-    $("#rp").onchange=e=>{rst.p=e.target.value;re()};$("#re").onchange=e=>{rst.id=e.target.value;re()};$("#rm").onchange=e=>{rst.m=e.target.value;re()};$("#rf").onchange=e=>{rst.f=e.target.value;re()};
-    $("#rv").onclick=()=>reclApply(C);
-    if($("#rz"))$("#rz").onclick=()=>{freezePeriod(C,rst.p);rclOpen=true;renderBulletin()};
-    x.querySelectorAll(".rfp").forEach(k=>k.onclick=()=>{const l=db.recl.log[+k.dataset.i];saveDoc(reclPDF(l),"Fiche-reclamation-"+l.eleve.replace(/\s+/g,"-")+"-"+l.matiere+".pdf",t=>{const m=$("#rcm");if(m)m.textContent=t})});
-  };
-  b.onclick=()=>{rclOpen=!rclOpen;x.style.display=rclOpen?"block":"none";if(rclOpen){x.innerHTML=reclPanel(C);wire()}};
-  if(rclOpen)wire();
-}
-// Bonification du conseil de classe : choix des élèves, motifs et relevé (trace interne, présentable en cas de contrôle)
-let bonOpen=false;
-function bonCands(C){
-  const ps=PERS(C),th=C.passage==null||String(C.passage).trim()===""?NaN:Number(String(C.passage).replace(",","."));
-  if(!ps.length||!Number.isFinite(th)||th>=10)return[];
-  const O=ps.map(pp=>bulData0(C,pp)),out=[];
-  O[O.length-1].rows.forEach(r=>{if(r.mg==null)return;const mg=O.map(d=>d.rows.find(y=>y.id===r.id).mg).filter(v=>v!=null),av=mg.reduce((a,b)=>a+b,0)/mg.length;if(av<10&&av>=th-1e-9)out.push({e:r.e,id:r.id,avant:av,plan:bonusPlan(O[O.length-1],r,O.slice(0,-1),ps[ps.length-1])})});
-  return out;
-}
-function releveData(C){
-  const ps=PERS(C);if(!ps.length)return[];const last=ps[ps.length-1],D=bulData(C,last),O=ps.map(pp=>bulData0(C,pp)),AA=annAll(C),B=(db.bonus||{})[C.classe]||{},out=[];
-  D.rows.forEach(r=>{if(!r.bonus)return;
-    const mg=O.map(d=>d.rows.find(y=>y.id===r.id).mg).filter(v=>v!=null),av=mg.length?mg.reduce((a,b)=>a+b,0)/mg.length:null,ap=AA.get(r.id);
-    out.push({e:r.e,motif:(B[r.id]||{}).motif||"",avant:av,apres:ap?ap.v:null,l:D.mats.filter(m=>r.bonus[m.matiere]).map(m=>{const sa=nn((getN(r.id,m.matiere,last)||{}).cp),a=r.bonus[m.matiere];return{m:m.matiere,s:sa,a:a,n:sa+a}})})});
-  return out;
-}
-function releveHTML(C,p){
-  const ps=PERS(C);if(!ps.length||p!==ps[ps.length-1])return"";const K=bonCands(C);if(!K.length)return"";const n=Object.keys((db.bonus||{})[C.classe]||{}).length;
-  return`<div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="rvb">Bonification du conseil de classe${n?" ("+n+" élève(s))":""}</button></div><div id="rvx" style="display:${bonOpen?"block":"none"};padding:0 14px 8px">${bonOpen?releveTable(C):""}</div>`;
-}
-function releveTable(C){
-  const K=bonCands(C),B=(db.bonus||{})[C.classe]||{},R=releveData(C);
-  const sel=`<div class="s" style="padding-bottom:6px">Élèves dont la moyenne annuelle atteint la moyenne de passage (${esc(String(C.passage))}) sans atteindre 10. Cochez ceux à qui le conseil de classe accorde une bonification et indiquez le motif : le système ajoute alors des points aux notes de composition (au plus 3 par matière, répartis de façon régulière) pour porter leur moyenne annuelle à 10,00. Si 10,00 ne peut pas être atteint dans ces limites, la moyenne de passage retenue est trop faible pour l’élève et aucun point n’est ajouté.</div><div style="overflow-x:auto"><table class="st"><thead><tr><th></th><th>Élève</th><th>Moy. annuelle</th><th>Motif de la décision</th></tr></thead><tbody>${K.map(k=>`<tr><td><input type="checkbox" class="bnk" data-id="${k.id}" ${k.plan.ok?(B[k.id]?"checked":""):"disabled"}></td><td class="l">${esc(k.e.nom.toUpperCase()+" "+k.e.prenom)}</td><td>${fmScore(k.avant)}</td><td>${k.plan.ok?`<input class="bnm" data-id="${k.id}" value="${esc((B[k.id]||{}).motif||"")}" placeholder="Ex. progression en cours d’année" style="min-width:200px">`:`<span style="color:#b00020">Moyenne de passage retenue trop faible pour cet élève : ${esc(k.plan.why)}.</span>`}</td></tr>`).join("")}</tbody></table></div><div class="nav2" style="padding:8px 0 4px"><button class="btnline" id="rvs">Enregistrer la décision</button></div><div class="s" id="rvm" role="status"></div>`;
-  const rel=R.length?`<div class="s" style="padding:10px 0 6px"><b>Relevé des points ajoutés</b> (trace interne : les notes saisies par les professeurs ne sont pas modifiées)</div><div style="overflow-x:auto"><table class="st"><thead><tr><th>Élève</th><th>Matière</th><th>Note saisie</th><th>Points ajoutés</th><th>Note retenue</th><th>Total points</th><th>Moy. annuelle avant</th><th>après</th><th>Motif</th></tr></thead><tbody>${R.map(o=>o.l.map((x,i)=>`<tr><td class="l">${i?"":esc(o.e.nom.toUpperCase()+" "+o.e.prenom)}</td><td class="l">${esc(x.m)}</td><td>${fmScore(x.s)}</td><td>+${fmScore(x.a)}</td><td>${fmScore(x.n)}</td><td><b>${i?"":"+"+fmScore(o.l.reduce((a,y)=>a+y.a,0))}</b></td><td>${i?"":fmScore(o.avant)}</td><td>${i?"":fmScore(o.apres)}</td><td class="l">${i?"":esc(o.motif)}</td></tr>`).join("")).join("")}</tbody></table></div><div class="s" style="padding:6px 0"><b>Total général : ${R.reduce((a,o)=>a+o.l.reduce((b,y)=>b+y.a,0),0).toFixed(2).replace(".",",")} point(s) de bonification pour ${R.length} élève(s)</b></div><div class="nav2" style="padding:8px 0 0"><button class="btnline" id="rvp">PDF du relevé</button></div>`:"";
-  return sel+rel;
-}
-function bindBonus(C){
-  const b=$("#rvb");if(!b)return;const x=$("#rvx");
-  const wire=()=>{
-    $("#rvs").onclick=()=>{const o={};let bad=false;x.querySelectorAll(".bnk").forEach(c=>{if(!c.checked||c.disabled)return;const m=(x.querySelector('.bnm[data-id="'+c.dataset.id+'"]').value||"").trim();if(!m)bad=true;o[c.dataset.id]={motif:m}});
-      if(bad){$("#rvm").textContent="Indiquez le motif de la décision pour chaque élève coché.";return}
-      db.bonus=db.bonus||{};if(Object.keys(o).length)db.bonus[C.classe]=o;else delete db.bonus[C.classe];save();bonOpen=true;renderBulletin()};
-    if($("#rvp"))$("#rvp").onclick=()=>saveDoc(relevePDF(C),"Releve-bonifications-"+C.classe+".pdf",t=>{const m=$("#bmsg");if(m)m.textContent=t});
-  };
-  b.onclick=()=>{bonOpen=!bonOpen;x.style.display=bonOpen?"block":"none";if(bonOpen){x.innerHTML=releveTable(C);wire()}};
-  if(bonOpen)wire();
-}
-function relevePDF(C){
-  const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;
-  const doc=new J({unit:"mm",format:"a4"}),E=db.etab,R=releveData(C),body=[];
-  R.forEach(o=>o.l.forEach((x,i)=>body.push([i?"":o.e.nom.toUpperCase()+" "+o.e.prenom,x.m,fmScore(x.s),"+"+fmScore(x.a),fmScore(x.n),i?"":"+"+fmScore(o.l.reduce((a,y)=>a+y.a,0)),i?"":fmScore(o.avant),i?"":fmScore(o.apres),i?"":o.motif])));
-  doc.setFont("times","bold").setFontSize(12).text([E.nom||"","Relevé des bonifications du conseil de classe — Classe : "+C.classe+" — Année scolaire "+anneeSco()],105,14,{align:"center"});
-  doc.setFont("times","normal").setFontSize(8).text(doc.splitTextToSize("Bonification accordée par le conseil de classe aux élèves dont la moyenne annuelle atteint la moyenne de passage ("+C.passage+") : des points (au plus 3 par matière, répartis de façon régulière) sont ajoutés aux notes de composition du dernier trimestre ou semestre pour porter la moyenne annuelle à 10,00. Les notes saisies par les professeurs n’ont pas été modifiées.",190),10,26);
-  doc.autoTable({startY:42,head:[["Élève","Matière","Note saisie","Points ajoutés","Note retenue","Total points","Moy. annuelle avant","Moy. annuelle après","Motif"]],body,theme:"grid",margin:{left:10,right:10},styles:{font:"times",fontSize:8,cellPadding:1.2,lineColor:0,lineWidth:.2,textColor:0,halign:"center",valign:"middle"},headStyles:{fillColor:255,textColor:0,fontStyle:"bold"},columnStyles:{0:{halign:"left",cellWidth:34},1:{halign:"left",cellWidth:24},8:{halign:"left",cellWidth:32}}});
-  const tt=R.reduce((a,o)=>a+o.l.reduce((b,y)=>b+y.a,0),0);doc.setFont("times","bold").setFontSize(9).text("Total général : "+tt.toFixed(2).replace(".",",")+" point(s) de bonification pour "+R.length+" élève(s)",10,doc.lastAutoTable.finalY+7);
-  const y=doc.lastAutoTable.finalY+22;doc.setFont("times","normal").setFontSize(9);
-  doc.text((E.lieu||"")+", le "+(fdate(E.dateConseil)||new Date().toLocaleDateString("fr-FR")),10,y);doc.text("Le Directeur",190,y,{align:"right"});doc.text(E.directeur||"",190,y+16,{align:"right"});
-  return doc;
-}
-function annAll(C){
-  const o=annAll0(C),A=((db.recl||{}).ann||{})[C.classe];if(!A)return o;const cl=claimIds(C);
-  o.forEach((x,id)=>{if(cl.has(String(id))){const v=effRank(A,id,x.v);if(v!=null)x.rk=ord(v)}else if(A.rk[id]!=null)x.rk=ord(A.rk[id])});
-  return o;
-}
+function bulData(C,p){return bulData0(C,p)}
 const pname=p=>p.replace(/^1er/,"Premier").replace(/^2e/,"Deuxième").replace(/^3e/,"Troisième");
 const ETAB=[["ministere","Ministère (2 lignes : touche Entrée pour passer à la ligne)"],["pays","Pays"],["devise","Devise"],["direction","Direction régionale (2 lignes)"],["inspection","Inspection (2 lignes)"],["nom","Établissement"],["numero","N° de l’établissement"],["tel","Téléphone"],["lieu","Lieu"],["directeur","Nom du directeur / proviseur"],["dateConseil","Date du conseil de classe"]];
 function etabDef(){const d=new Date(),y=d.getFullYear(),a=d.getMonth()>=8?y+" - "+(y+1):(y-1)+" - "+y;return{ministere:"Ministère de l’éducation\nnationale",pays:"République togolaise",devise:"Travail - Liberté - Patrie",direction:"",inspection:"",nom:"",numero:"",tel:"",annee:a,lieu:"",directeur:""}}
 function bulModel(C,p,D,k){
   const r=D.rows[k],eff=D.rows.length,ps=PERS(C),mrk={};
-  D.mats.forEach(m=>{mrk[m.matiere]=rkOf(D.rows.map(x=>({id:x.id,mo:x.per[m.matiere].mo})),"mo");const f=D.fz&&D.fz.m[m.matiere];if(f)D.rows.forEach(x=>{if(D.claimM.has(x.id+"|"+m.matiere)){const v=effRank(f,x.id,x.per[m.matiere].mo);if(v!=null)mrk[m.matiere][x.id]=v}else if(f.rk[x.id]!=null)mrk[m.matiere][x.id]=f.rk[x.id]})});
+  D.mats.forEach(m=>{mrk[m.matiere]=rkOf(D.rows.map(x=>({id:x.id,mo:x.per[m.matiere].mo})),"mo")});
   let tc=0,ts=0;
   const lines=D.mats.map(m=>{const x=r.per[m.matiere],n=getN(r.id,m.matiere,p)||{},pr=db.profs.find(q=>q.ens.includes(m.matiere+"|"+C.classe));if(x.mo!=null){tc+=+m.coef;ts+=x.mp}
-    return[m.matiere,[n.i1,n.i2,n.dv].filter(v=>v!==""&&v!=null).map(v=>fmScore(nn(v))).join(" · ")||"—",fmScore(x.mc),fmScore(nn(n.cp)!=null?nn(n.cp)+((r.bonus||{})[m.matiere]||0):null),String(m.coef),fmScore(x.mp),x.mo!=null?mrk[m.matiere][r.id]+"/"+eff:"—",appr(x.mo),pr?profShort(pr):""]});
+    return[m.matiere,[n.i1,n.i2,n.dv].filter(v=>v!==""&&v!=null).map(v=>fmScore(nn(v))).join(" · ")||"—",fmScore(x.mc),fmScore(nn(n.cp)),String(m.coef),fmScore(x.mp),x.mo!=null?mrk[m.matiere][r.id]+"/"+eff:"—",appr(x.mo),pr?profShort(pr):""]});
   const mgs=D.rows.map(x=>x.mg).filter(x=>x!=null),av=mgs.length?mgs.reduce((a,b)=>a+b,0)/mgs.length:null;
-  const others=ps.map(pp=>{const d=bulData(C,pp),x=d.rows.find(y=>y.id===r.id);return["Moyenne, "+pp,fmScore(x.mg),x.mg!=null?d.rkG[r.id]+"/"+eff:"—"]});
+  const others=ps.map(pp=>{const d=bulData(C,pp),x=d.rows.find(y=>y.id===r.id);return["Moyenne, "+pp,fmScore(x.mg),x.mg!=null?(x.imp?String(d.rkG[r.id]):d.rkG[r.id]+"/"+eff):"—"]});
   const tit=db.profs.find(q=>q.titulaire===C.classe);
   return{r,eff,lines,tot:["Totaux","","","",String(tc),fmScore(ts),"","",""],others,mg:r.mg,rk:r.mg!=null?D.rkG[r.id]+"/"+eff:"",trav:appr(r.mg)||"—",
     ment:r.mg==null?"":r.mg>=16?"Encouragements":r.mg>=14?"Félicitations":r.mg>=12?"Tableau d’honneur":"",
@@ -807,8 +658,7 @@ function bulM2(C,p,D,k){
   const mg=(PERS(C).indexOf(p)===PERS(C).length-1?[...annAll(C).values()].map(a=>a.v):D.rows.map(x=>x.mg)).filter(x=>x!=null);   // dernière période : moyennes annuelles
   const ps=PERS(C),ix=ps.indexOf(p),all=ps.map(pp=>pp===p?r.mg:bulData(C,pp).rows.find(y=>y.id===r.id).mg).filter(v=>v!=null),ref=ix>=1&&ix===ps.length-1?(all.length?all.reduce((a,b)=>a+b,0)/all.length:null):r.mg,ml=[[12,"Tableau d’honneur"],[14,"Encouragements"],[15,"Félicitations"]].map(t=>ref!=null&&ref>=t[0]?t[1]:"---");
   if(ix>=1&&ix===ps.length-1&&ref!=null)M.trav=appr(ref);   // dernière période : appréciation de la moyenne annuelle
-  const ST=ix===ps.length-1?(((db.recl||{}).ann||{})[C.classe]||{}).st:(D.fz||{}).st;
-  return{ml,M,rows,perf,trims,mx:ST&&ST.mx!==undefined?ST.mx:(mg.length?Math.max(...mg):null),mn:ST&&ST.mn!==undefined?ST.mn:(mg.length?Math.min(...mg):null),av:ST&&ST.av!==undefined?ST.av:(mg.length?mg.reduce((a,b)=>a+b,0)/mg.length:null),no:String(k+1).padStart(3,"0"),rk:M.rk?ord(M.rk.split("/")[0]):""};
+  return{ml,M,rows,perf,trims,mx:mg.length?Math.max(...mg):null,mn:mg.length?Math.min(...mg):null,av:mg.length?mg.reduce((a,b)=>a+b,0)/mg.length:null,no:String(k+1).padStart(3,"0"),rk:M.rk?ord(M.rk.split("/")[0]):""};
 }
 const mp2=(rows,sp)=>{let o=[],g=-1;rows.forEach(r=>{if(g>=0&&r.g!==g)o.push(sp);g=r.g;o.push(r)});return o};
 function renderBulletin(){
@@ -1383,7 +1233,7 @@ const BKF={"b": "AAEAAAAKAIAAAwAgT1MvMkXO5L8AAAEoAAAAYGNtYXCEQ4TdAAAEpAAAAahnbHl
 (function(){const st=document.createElement("style");st.textContent=[["b",700,"normal"],["bi",700,"italic"],["r",400,"normal"],["ri",400,"italic"]].map(([k,w,s])=>`@font-face{font-family:"ScolaBook";font-weight:${w};font-style:${s};src:url(data:font/ttf;base64,${BKF[k]}) format("truetype")}`).join("");document.head.appendChild(st)})();
 const BKFAM="'ScolaBook','Bookman Old Style',Bookman,'URW Bookman',Georgia,serif";
 function imgSize(u){try{const b=atob(u.split(",")[1].slice(0,60000));if(u.indexOf("image/png")>0)return[(b.charCodeAt(16)<<24|b.charCodeAt(17)<<16|b.charCodeAt(18)<<8|b.charCodeAt(19)),(b.charCodeAt(20)<<24|b.charCodeAt(21)<<16|b.charCodeAt(22)<<8|b.charCodeAt(23))];let i=2;while(i<b.length){if(b.charCodeAt(i)!==255)break;const m=b.charCodeAt(i+1),l=b.charCodeAt(i+2)<<8|b.charCodeAt(i+3);if(m>=192&&m<=195)return[b.charCodeAt(i+7)<<8|b.charCodeAt(i+8),b.charCodeAt(i+5)<<8|b.charCodeAt(i+6)];i+=2+l}}catch(e){}return[1,1]}
-function annAll0(C){
+function annAll(C){
   const ps=PERS(C),Ds=ps.map(pp=>bulData(C,pp)),L=[];
   Ds[0].rows.forEach(r=>{const a=Ds.map(d=>d.rows.find(y=>y.id===r.id).mg).filter(v=>v!=null);if(a.length)L.push([r.id,a.reduce((s,x)=>s+x,0)/a.length])});
   L.sort((x,y)=>y[1]-x[1]);const o=new Map();let rk=0;L.forEach((x,i)=>{if(!i||Math.round(L[i-1][1]*100)!==Math.round(x[1]*100))rk=i+1;o.set(x[0],{v:x[1],rk:ord(rk)})});return o}
@@ -1482,12 +1332,11 @@ function renderBulletin(){
   if(!D.rows.length){L.innerHTML=`<li class="hint" style="padding-left:16px">Aucun élève dans cette classe.</li>`;return}
   bst.i=Math.max(0,Math.min(bst.i,D.rows.length-1));
   const B=bulM2(C,bst.p,D,bst.i),M=B.M,d=new Date().toLocaleDateString("fr-FR"),dc=fdate(E.dateConseil)||d,R=bulRender(bulSpec(B,C,bst.p,E,annAll(C),dc,d));
-  L.innerHTML=`<li class="bul">${abandonNoticeHTML(C,bst.p)}<div style="overflow:auto"><div id="bkw" style="width:${R.wpx}px;height:${R.hpx}px">${R.html}</div></div><div class="nav2" style="padding:8px 14px 4px"><button class="btnline" id="bpv" ${bst.i===0?"disabled":""}>Précédent</button><button class="btnline" id="bnx" ${bst.i===M.eff-1?"disabled":""}>Élève suivant</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bp1">PDF de cet élève</button><button class="btnline" id="bp2">PDF de la classe</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bpr1">Imprimer cet élève</button><button class="btnline" id="bpr2">Imprimer la classe</button></div>${releveHTML(C,bst.p)}${reclHTML(C)}<div class="s" id="bmsg" role="status" style="padding:0 16px 14px"></div></li>`;
+  L.innerHTML=`<li class="bul">${abandonNoticeHTML(C,bst.p)}<div style="overflow:auto"><div id="bkw" style="width:${R.wpx}px;height:${R.hpx}px">${R.html}</div></div><div class="nav2" style="padding:8px 14px 4px"><button class="btnline" id="bpv" ${bst.i===0?"disabled":""}>Précédent</button><button class="btnline" id="bnx" ${bst.i===M.eff-1?"disabled":""}>Élève suivant</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bp1">PDF de cet élève</button><button class="btnline" id="bp2">PDF de la classe</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bpr1">Imprimer cet élève</button><button class="btnline" id="bpr2">Imprimer la classe</button></div><div class="s" id="bmsg" role="status" style="padding:0 16px 14px"></div></li>`;
   const w=$("#bkw"),av=w.parentElement.clientWidth||360,s=Math.max(.8,Math.min(1.25,(av-4)/R.wpx));w.style.width=(R.wpx*s)+"px";w.style.height=(R.hpx*s)+"px";w.firstChild.style.transform=`scale(${s})`;
   if($("#abx"))$("#abx").onclick=async()=>{const l=abandonList(C)||[];if(!await confirmUI("Archiver "+l.length+" élève(s) sans notes comme abandons ?","Archiver"))return;l.forEach(e=>archivePush(e,"Abandon"));save();bst.i=0;render()};
   $("#bpv").onclick=()=>{bst.i--;renderBulletin()};$("#bnx").onclick=()=>{bst.i++;renderBulletin()};
   $("#bp1").onclick=()=>dlPDF(C,false);$("#bp2").onclick=()=>dlPDF(C,true);$("#bpr1").onclick=()=>printBulletins(C,false);$("#bpr2").onclick=()=>printBulletins(C,true);
-  bindBonus(C);bindRecl(C);
 }
 
 function printBulletins(C,all){
@@ -1534,7 +1383,7 @@ function parcoursApply(plan,doAb){
     });
     p.aj.forEach(e=>{e.statut="Redoublant";r.rep++});
   });
-  db.notes=[];db.nat={};db.bonus={};db.recl=null;db.eleves.forEach(e=>{delete e.nat});
+  db.notes=[];db.nat={};db.eleves.forEach(e=>{delete e.nat});
   save();return r;
 }
 function renderParcours(L){
@@ -1590,7 +1439,7 @@ function doWipe(s){const has=k=>s.includes(k);
   if(has("classes")){db.classes=[];s.push("eleves");db.profs.forEach(p=>{p.ens=[];p.titulaire=""})}
   if(has("matieres")){db.matieres=[];s.push("notes");db.profs.forEach(p=>{p.ens=[]})}
   if(has("eleves")){db.eleves=[];s.push("notes")}
-  if(has("notes")){db.notes=[];db.seen={};db.bonus={};db.recl=null}
+  if(has("notes")){db.notes=[];db.seen={}}
   if(has("profs")){db.profs=[];s.push("edtres")}
   if(has("exams")){db.exams=[];db.nat={}}
   if(has("edt"))db.edt={refus:{},apm:{},jum:false,res:null};else if(has("edtres")||has("classes")||has("matieres"))db.edt&&(db.edt.res=null);
@@ -1610,9 +1459,9 @@ function openWipe(){const d=document.createElement("dialog");d.style.cssText="ma
 function renderMenu(){
   const L=$("#list");L.classList.add("plain");$("#tools").innerHTML="";
   const it=[["accueil","🏫","Établissement","Nom, logo, directeur, accès"],["classes","🏷️","Classes",db.classes.length+" classe(s)"],["matieres","📚","Matières",db.matieres.length+" matière(s)"],["profs","👨‍🏫","Professeurs",db.profs.length+" professeur(s)"],["eleves","🎓","Élèves",db.eleves.length+" élève(s)"],["notes","✍️","Saisie des notes","Par classe et matière"],["bulletin","📄","Bulletins","Affichage et PDF"],["stats","📊","Statistiques","Résultats par classe"],["examen","📝","Examens blancs","Notes et classement"],["emploi","🗓️","Emplois du temps","Génération et PDF"],["listes","📋","Listes de classe","Fiches de relevé de notes"]];
-  L.innerHTML='<li class="mg">'+it.map(i=>`<button type="button" class="mbtn" data-t="${i[0]}"><span class="mi">${i[1]}</span><b>${i[2]}</b><span class="s">${i[3]}</span></button>`).join("")+"</li>"+((window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone?"":'<li style="list-style:none;padding:18px 12px 0"><button type="button" class="btnline" id="pwa_btn" style="width:100%">📲 Installer l’application sur ce téléphone</button></li>')+'<li style="list-style:none;padding:18px 12px 4px"><button type="button" class="btnline" id="wipe" style="width:100%;border-color:#b3261e;color:#b3261e">🗑️ Effacer des données…</button></li>';
+  L.innerHTML='<li class="mg">'+it.map(i=>`<button type="button" class="mbtn" data-t="${i[0]}"><span class="mi">${i[1]}</span><b>${i[2]}</b><span class="s">${i[3]}</span></button>`).join("")+"</li>"+((window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone?"":'<li style="list-style:none;padding:18px 12px 0"><button type="button" class="btnline" id="pwa_btn" style="width:100%">📲 Installer l’application</button></li>')+'<li style="list-style:none;padding:18px 12px 4px"><button type="button" class="btnline" id="wipe" style="width:100%;border-color:#b3261e;color:#b3261e">🗑️ Effacer des données…</button></li>';
   $("#wipe").onclick=openWipe;
-  if($("#pwa_btn"))$("#pwa_btn").onclick=()=>{if(window.pwaInstall&&window.pwaInstall())return;confirmUI("Pour installer ScolaNova : sur Android (Chrome), touchez les trois points ⋮ puis « Installer l’application » ou « Ajouter à l’écran d’accueil ». Sur iPhone (Safari), touchez Partager puis « Sur l’écran d’accueil ».","OK")};
+  if($("#pwa_btn"))$("#pwa_btn").onclick=()=>{if(window.pwaInstall)window.pwaInstall()};
   L.querySelectorAll(".mbtn").forEach(b=>b.onclick=()=>{const dest=b.dataset.t;if(OUTPUT_TABS.has(dest)&&!requireLicensedOutput(({bulletin:"les bulletins",stats:"les statistiques",examen:"les résultats d’examens",emploi:"les emplois du temps",listes:"les listes et documents PDF"})[dest]))return;tab=dest;q="";fc="";render();scrollTo(0,0)});
 }
 const lst={c:"",m:""};
@@ -1886,27 +1735,54 @@ startPull();startSyncRetry();
 </script>
 
 <script>
-/* Application installable : proposition d’ajout à l’écran d’accueil, après confirmation de l’utilisateur */
+/* Application installable : tous navigateurs. Chrome/Edge/Brave/Opera/Samsung : fenêtre d’installation native ; les autres : marche à suivre adaptée au navigateur */
 (function(){
   if("serviceWorker"in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});
-  var KEY="scolanova-pwa-plus-tard",standalone=(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true,dp=null,bar=null;
+  var KEY="scolanova-pwa-plus-tard",ua=navigator.userAgent||"",standalone=(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true,bar=null;
+  var iOS=/iphone|ipad|ipod/i.test(ua)||(/macintosh/i.test(ua)&&navigator.maxTouchPoints>1);
+  var android=/android/i.test(ua),mobile=iOS||android||/mobile/i.test(ua);
+  var inApp=/FBAN|FBAV|FB_IAB|Instagram|WhatsApp|Line\/|Snapchat|TikTok|MicroMessenger|Messenger|Twitter|LinkedInApp/i.test(ua)||(android&&/; wv\)/i.test(ua));
+  var br=/SamsungBrowser/i.test(ua)?"samsung":/EdgA|EdgiOS|Edg\//i.test(ua)?"edge":/OPR\/|OPiOS|Opera/i.test(ua)?"opera":/Firefox|FxiOS/i.test(ua)?"firefox":/CriOS|Chrome\//i.test(ua)?"chrome":/Safari/i.test(ua)?"safari":"autre";
   function later(){try{var t=+localStorage.getItem(KEY)||0;return Date.now()-t<14*864e5}catch(e){return false}}
-  function show(txt,withBtn){
-    if(bar||standalone||later())return;
-    bar=document.createElement("div");bar.id="pwa_bar";
-    bar.style.cssText="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:10px 14px;background:var(--surface,#fff);color:var(--ink,#16213a);border-bottom:1px solid var(--line,#c9d6f0);font:14px/1.35 system-ui,sans-serif";
-    var b="padding:8px 14px;border-radius:8px;border:1px solid var(--line,#c9d6f0);background:var(--surface,#fff);color:var(--ink,#16213a);font:inherit;cursor:pointer";
-    bar.innerHTML="<span>"+txt+"</span><span style=\"display:flex;gap:8px\">"+(withBtn?"<button type=\"button\" id=\"pwa_y\" style=\""+b+";background:var(--accent,#c4392d);color:var(--on-accent,#fff);border-color:transparent\">Installer</button>":"")+"<button type=\"button\" id=\"pwa_n\" style=\""+b+"\">Plus tard</button></span>";
-    document.body.insertBefore(bar,document.body.firstChild);
-    document.getElementById("pwa_n").onclick=function(){try{localStorage.setItem(KEY,String(Date.now()))}catch(e){}bar.remove();bar=null};
-    var y=document.getElementById("pwa_y");
-    if(y)y.onclick=function(){if(!dp)return;dp.prompt();dp.userChoice.then(function(){dp=null;if(bar){bar.remove();bar=null}})};
+  function steps(){
+    if(inApp)return["Vous êtes dans le navigateur intégré d’une autre application (WhatsApp, Facebook…), qui ne permet pas l’installation.","Touchez le menu ⋮ (ou « … ») puis « Ouvrir dans le navigateur » (Chrome, Safari…), et recommencez."];
+    if(iOS)return["Touchez le bouton Partager (carré avec une flèche vers le haut), en bas ou en haut de l’écran.","Faites défiler puis touchez « Sur l’écran d’accueil » (ou « Ajouter à l’écran d’accueil »).","Touchez « Ajouter »."];
+    if(br==="samsung")return["Touchez le menu ☰ en bas à droite.","Touchez « Ajouter la page à » puis « Écran d’accueil » (ou « Installer »)."];
+    if(br==="firefox")return mobile?["Touchez le menu ⋮.","Touchez « Installer » (ou « Ajouter à l’écran d’accueil »)."]:["Firefox sur ordinateur ne sait pas installer d’application.","Ouvrez ScolaNova dans Chrome ou Edge pour l’installer, ou ajoutez cette page à vos favoris (Ctrl+D)."];
+    if(br==="edge")return mobile?["Touchez le menu « … » en bas de l’écran.","Touchez « Ajouter au téléphone » (ou « Ajouter à l’écran d’accueil »)."]:["Cliquez sur « … » en haut à droite, puis « Applications ».","Cliquez sur « Installer ce site en tant qu’application »."];
+    if(br==="opera")return mobile?["Touchez le menu ⋮ (ou le logo Opera).","Touchez « Écran d’accueil » (ou « Ajouter à »)."]:["Cliquez sur l’icône d’installation à droite de la barre d’adresse, ou ouvrez le menu puis « Installer ScolaNova »."];
+    if(br==="safari")return["Dans la barre de menu, cliquez sur « Fichier » puis « Ajouter au Dock ». (Safari récent seulement ; sinon ouvrez ScolaNova dans Chrome ou Edge.)"];
+    if(br==="chrome")return mobile?["Touchez le menu ⋮ en haut à droite.","Touchez « Installer l’application » (ou « Ajouter à l’écran d’accueil »)."]:["Cliquez sur l’icône d’installation à droite de la barre d’adresse,","ou sur ⋮ puis « Enregistrer et partager » puis « Installer ScolaNova »."];
+    return["Ouvrez le menu de votre navigateur.","Cherchez « Installer l’application », « Ajouter à l’écran d’accueil » ou « Installer ce site »."];
   }
-  window.pwaInstall=function(){if(dp){dp.prompt();dp.userChoice.then(function(){dp=null;if(bar){bar.remove();bar=null}});return true}return false};
-  window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();dp=e;show("Installer ScolaNova sur votre téléphone, comme une application ?",true)});
-  window.addEventListener("appinstalled",function(){if(bar){bar.remove();bar=null}});
-  /* iPhone / iPad (Safari) : pas de bouton automatique possible, on affiche la marche à suivre */
-  if(/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.MSStream)window.addEventListener("load",function(){setTimeout(function(){show("Pour installer ScolaNova : touchez le bouton Partager, puis « Sur l’écran d’accueil ».",false)},1500)});
+  function help(){
+    var o=document.createElement("div");o.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px";
+    var c=document.createElement("div");c.style.cssText="max-width:420px;width:100%;background:var(--surface,#fff);color:var(--ink,#16213a);border-radius:14px;padding:18px;font:15px/1.45 system-ui,sans-serif;max-height:90vh;overflow:auto";
+    c.innerHTML="<b style=\"font-size:17px\">Installer ScolaNova</b><ol style=\"padding-left:20px;margin:12px 0\">"+steps().map(function(x){return"<li style=\"margin:6px 0\">"+x+"</li>"}).join("")+"</ol><div style=\"text-align:right\"><button type=\"button\" style=\"padding:9px 18px;border-radius:8px;border:0;background:var(--accent,#c4392d);color:var(--on-accent,#fff);font:inherit;cursor:pointer\">OK</button></div>";
+    o.appendChild(c);document.body.appendChild(o);
+    var close=function(){o.remove()};c.querySelector("button").onclick=close;o.onclick=function(e){if(e.target===o)close()};
+  }
+  function install(){
+    var dp=window.__dp;
+    if(dp&&dp.prompt){try{dp.prompt();dp.userChoice.then(function(){window.__dp=null;kill()},function(){});return true}catch(e){}}
+    help();return true;
+  }
+  function kill(){if(bar){bar.remove();bar=null}}
+  window.pwaInstall=install;
+  function show(){
+    if(standalone||later()||inApp)return;
+    var native=!!window.__dp,txt=native?"Installer ScolaNova sur votre appareil, comme une application ?":"Vous pouvez installer ScolaNova comme une application.";
+    if(!bar){bar=document.createElement("div");bar.id="pwa_bar";
+      bar.style.cssText="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:10px 14px;background:var(--surface,#fff);color:var(--ink,#16213a);border-bottom:1px solid var(--line,#c9d6f0);font:14px/1.35 system-ui,sans-serif";
+      document.body.insertBefore(bar,document.body.firstChild)}
+    var b="padding:8px 14px;border-radius:8px;border:1px solid var(--line,#c9d6f0);background:var(--surface,#fff);color:var(--ink,#16213a);font:inherit;cursor:pointer";
+    bar.innerHTML="<span>"+txt+"</span><span style=\"display:flex;gap:8px\"><button type=\"button\" id=\"pwa_y\" style=\""+b+";background:var(--accent,#c4392d);color:var(--on-accent,#fff);border-color:transparent\">"+(native?"Installer":"Comment faire")+"</button><button type=\"button\" id=\"pwa_n\" style=\""+b+"\">Plus tard</button></span>";
+    document.getElementById("pwa_n").onclick=function(){try{localStorage.setItem(KEY,String(Date.now()))}catch(e){}kill()};
+    document.getElementById("pwa_y").onclick=install;
+  }
+  window.addEventListener("pwa-ready",show);
+  window.addEventListener("appinstalled",function(){window.__dp=null;kill()});
+  window.addEventListener("load",function(){setTimeout(show,2000)});
 })();
 </script>
 </body>
