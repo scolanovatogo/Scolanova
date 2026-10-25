@@ -443,7 +443,7 @@ function preparerMatriculeNouveau(){
 }
 function attribuerMatricule(e){const n=preparerMatriculeNouveau();if(n===null)return false;e.matricule=n;db.matriculeNext=n+1;return true}
 
-$("#form").addEventListener("submit",e=>{
+$("#form").addEventListener("submit",async e=>{
   e.preventDefault();const E=ENT[tab],fd=new FormData($("#form")),err=m=>($("#err").textContent=m);let o={};
   if(tab==="classes"){
     if(cur)cur.passage=fd.get("passage");
@@ -462,6 +462,13 @@ $("#form").addEventListener("submit",e=>{
           if(!Number.isInteger(rv)||rv<1)return err("Rang du "+ps[i]+" : entrez un nombre entier supérieur à 0.");tr[ps[i]]={mg:mv,rk:rv}}
         if(!Object.keys(tr).length)return err("Renseignez au moins une moyenne et un rang de l’établissement d’origine.");o.transfert=tr}
       else o.transfert=null}
+    if(!cur&&tab==="eleves"){
+      const nz=x=>String(x||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim(),full=nz(o.nom+" "+o.prenom);
+      const hit=(db.archives||[]).findIndex(a=>(nz(a.nom+" "+a.prenom)===full||nz(a.prenom+" "+a.nom)===full)&&!(a.naissance&&o.naissance&&a.naissance!==o.naissance));
+      if(hit>=0){const a=db.archives[hit];
+        if(!await confirmUI("Cet élève existe déjà dans les archives : "+a.nom.toUpperCase()+" "+a.prenom+" ("+a.decision+", "+a.classe+", "+a.annee+"). Le réintégrer en "+o.classe+" ?","Réintégrer"))return err("Inscription annulée : cet élève est déjà archivé. Réintégrez-le, ou modifiez le nom s’il s’agit d’un homonyme.");
+        reintegrer(hit,o);save();$("#dlg").close();render();return}
+    }
     const dup=db[tab].some(r=>(!cur||r.id!==cur.id)&&(tab==="matieres"?r.matiere===o.matiere&&r.niveau===o.niveau:(r.nom+r.prenom).toLowerCase()===(o.nom+o.prenom).toLowerCase()&&r.classe===o.classe));
     if(dup)return err("Cet enregistrement existe déjà.");
     if(cur)Object.assign(cur,o);else{
@@ -528,7 +535,7 @@ function renderNotes(){if(ENS&&ensSt)$("#lead").textContent=ensSt;
     const mats=db.matieres.filter(m=>m.niveau===C.niveau);
     const res=els.map(e=>{const tt=(e.transfert||{})[nst.p];if(tt&&nn(tt.mg)!=null)return{e,mg:nn(tt.mg),c:0,imp:1,irk:tt.rk};let s=0,k=0,c=0;mats.forEach(m=>{const r=calc(getN(e.id,m.matiere,nst.p),+m.coef);if(r.mo!=null){s+=r.mp;k+=+m.coef;c++}});return{e,mg:k?s/k:null,c}});
     res.sort((a,b)=>(b.mg??-1)-(a.mg??-1));
-    const rr=res.filter(r=>!r.imp);rr.forEach((r,i)=>{r.rk=r.mg==null?null:(i&&rr[i-1].mg!=null&&Math.round(rr[i-1].mg*100)===Math.round(r.mg*100)?rr[i-1].rk:i+1)});res.forEach(r=>{if(r.imp)r.rk=r.irk});
+    const rr=res.filter(r=>!r.imp);rr.forEach((r,i)=>{r.rk=r.mg==null?null:(i&&rr[i-1].mg!=null&&Math.round(rr[i-1].mg*100)===Math.round(r.mg*100)?rr[i-1].rk:i+1)});res.forEach(r=>{if(r.imp)r.rk=r.irk});{const ov=reclGeneral(C,nst.p,res.map(r=>({id:r.e.id,mg:r.mg})));res.forEach(r=>{if(!r.imp&&ov[r.e.id]!=null)r.rk=ov[r.e.id]})}
     L.innerHTML=res.map(r=>`<li><div class="row" style="cursor:default"><span class="num">${r.rk??"—"}</span><span class="txt"><div class="t">${ENT.eleves.title(r.e)}</div><div class="s">Moyenne générale ${fm(r.mg)} · ${r.imp?"reprise de l’établissement d’origine":r.c+" matière(s) sur "+mats.length}</div></span></div></li>`).join("");
   }
 }
@@ -560,13 +567,13 @@ function bulData0(C,p){
   const rkG=rkOf(rows.filter(r=>!r.imp),"mg");rows.forEach(r=>{if(r.imp)rkG[r.id]=r.impRk});
   return{mats,rows,rkG};
 }
-function bulData(C,p){return bulData0(C,p)}
+function bulData(C,p){const D=bulData0(C,p),ov=reclGeneral(C,p,D.rows);for(const id in ov)D.rkG[id]=ov[id];return D}
 const pname=p=>p.replace(/^1er/,"Premier").replace(/^2e/,"Deuxième").replace(/^3e/,"Troisième");
 const ETAB=[["ministere","Ministère (2 lignes : touche Entrée pour passer à la ligne)"],["pays","Pays"],["devise","Devise"],["direction","Direction régionale (2 lignes)"],["inspection","Inspection (2 lignes)"],["nom","Établissement"],["numero","N° de l’établissement"],["tel","Téléphone"],["lieu","Lieu"],["directeur","Nom du directeur / proviseur"],["dateConseil","Date du conseil de classe"]];
 function etabDef(){const d=new Date(),y=d.getFullYear(),a=d.getMonth()>=8?y+" - "+(y+1):(y-1)+" - "+y;return{ministere:"Ministère de l’éducation\nnationale",pays:"République togolaise",devise:"Travail - Liberté - Patrie",direction:"",inspection:"",nom:"",numero:"",tel:"",annee:a,lieu:"",directeur:""}}
 function bulModel(C,p,D,k){
   const r=D.rows[k],eff=D.rows.length,ps=PERS(C),mrk={};
-  D.mats.forEach(m=>{mrk[m.matiere]=rkOf(D.rows.map(x=>({id:x.id,mo:x.per[m.matiere].mo})),"mo")});
+  D.mats.forEach(m=>{mrk[m.matiere]=rkOf(D.rows.map(x=>({id:x.id,mo:x.per[m.matiere].mo})),"mo");const ov=reclSubj(C,p,D.rows,m.matiere);for(const id in ov)mrk[m.matiere][id]=ov[id]});
   let tc=0,ts=0;
   const lines=D.mats.map(m=>{const x=r.per[m.matiere],n=getN(r.id,m.matiere,p)||{},pr=db.profs.find(q=>q.ens.includes(m.matiere+"|"+C.classe));if(x.mo!=null){tc+=+m.coef;ts+=x.mp}
     return[m.matiere,[n.i1,n.i2,n.dv].filter(v=>v!==""&&v!=null).map(v=>fmScore(nn(v))).join(" · ")||"—",fmScore(x.mc),fmScore(nn(n.cp)),String(m.coef),fmScore(x.mp),x.mo!=null?mrk[m.matiere][r.id]+"/"+eff:"—",appr(x.mo),pr?profShort(pr):""]});
@@ -1233,10 +1240,85 @@ const BKF={"b": "AAEAAAAKAIAAAwAgT1MvMkXO5L8AAAEoAAAAYGNtYXCEQ4TdAAAEpAAAAahnbHl
 (function(){const st=document.createElement("style");st.textContent=[["b",700,"normal"],["bi",700,"italic"],["r",400,"normal"],["ri",400,"italic"]].map(([k,w,s])=>`@font-face{font-family:"ScolaBook";font-weight:${w};font-style:${s};src:url(data:font/ttf;base64,${BKF[k]}) format("truetype")}`).join("");document.head.appendChild(st)})();
 const BKFAM="'ScolaBook','Bookman Old Style',Bookman,'URW Bookman',Georgia,serif";
 function imgSize(u){try{const b=atob(u.split(",")[1].slice(0,60000));if(u.indexOf("image/png")>0)return[(b.charCodeAt(16)<<24|b.charCodeAt(17)<<16|b.charCodeAt(18)<<8|b.charCodeAt(19)),(b.charCodeAt(20)<<24|b.charCodeAt(21)<<16|b.charCodeAt(22)<<8|b.charCodeAt(23))];let i=2;while(i<b.length){if(b.charCodeAt(i)!==255)break;const m=b.charCodeAt(i+1),l=b.charCodeAt(i+2)<<8|b.charCodeAt(i+3);if(m>=192&&m<=195)return[b.charCodeAt(i+7)<<8|b.charCodeAt(i+8),b.charCodeAt(i+5)<<8|b.charCodeAt(i+6)];i+=2+l}}catch(e){}return[1,1]}
+/* ===== Réclamation de notes : seul l'élève réclamant est reclassé, les autres rangs restent figés ===== */
+function reclKey(C,p){return C.classe+"|"+p}
+function reclGeneral(C,p,rows){
+  const R=(db.recl||{})[reclKey(C,p)];if(!R)return{};
+  const out={},cl=R.cl||{},rd=x=>Math.round(x*100);
+  rows.forEach(r=>{
+    if(cl[r.id]){if(r.mg==null)return;let n=1;rows.forEach(o=>{if(o.id!==r.id&&o.mg!=null&&rd(o.mg)>rd(r.mg))n++});out[r.id]=n}
+    else{const f=R.fr[r.id];if(f&&f.rk!=null)out[r.id]=f.rk}
+  });
+  return out;
+}
+function reclSubj(C,p,rows,mat){
+  const R=(db.recl||{})[reclKey(C,p)];if(!R)return{};
+  const out={},cl=R.cl||{},rd=x=>Math.round(x*100),mo=r=>r.per&&r.per[mat]?r.per[mat].mo:null;
+  rows.forEach(r=>{
+    if(cl[r.id]){const v=mo(r);if(v==null)return;let n=1;rows.forEach(o=>{const w=mo(o);if(o.id!==r.id&&w!=null&&rd(w)>rd(v))n++});out[r.id]=n}
+    else{const f=R.fr[r.id];if(f&&f.per&&f.per[mat]&&f.per[mat].rk!=null)out[r.id]=f.per[mat].rk}
+  });
+  return out;
+}
+function reclSnap(C,p){
+  const D=bulData(C,p),fr={},sr={};
+  D.mats.forEach(m=>{sr[m.matiere]=rkOf(D.rows.map(x=>({id:x.id,mo:x.per[m.matiere].mo})),"mo")});
+  D.rows.forEach(r=>{const per={};D.mats.forEach(m=>{const x=r.per[m.matiere];if(x&&x.mo!=null)per[m.matiere]={mo:x.mo,rk:sr[m.matiere][r.id]}});fr[r.id]={mg:r.mg,rk:D.rkG[r.id],per}});
+  const R={fr,cl:{},date:new Date().toISOString().slice(0,10)},ps=PERS(C);
+  if(p===ps[ps.length-1]){const ann={};annAll(C).forEach((v,id)=>{ann[id]={v:v.v,rk:parseInt(v.rk)}});R.ann=ann}
+  db.recl=db.recl||{};db.recl[reclKey(C,p)]=R;return R;
+}
+function reclSim(C,p,id,vals){
+  const bak=[];let res=null;
+  Object.keys(vals).forEach(m=>{let n=getN(id,m,p),made=false;if(!n){n={e:id,m,p,i1:"",i2:"",dv:"",cp:""};db.notes.push(n);made=true}bak.push({n,made,old:{i1:n.i1,i2:n.i2,dv:n.dv,cp:n.cp}});Object.assign(n,vals[m])});
+  try{res=bulData(C,p)}finally{bak.forEach(b=>{if(b.made)db.notes.splice(db.notes.indexOf(b.n),1);else Object.assign(b.n,b.old)})}
+  return res;
+}
+function reclOpen(){
+  const C=db.classes.find(c=>c.classe===bst.c);if(!C||!bst.p){alert("Choisissez d’abord la classe et la période.");return}
+  const p=bst.p,key=reclKey(C,p),D0=bulData(C,p);
+  if(!D0.rows.length){alert("Aucun élève dans cette classe.");return}
+  const cands=D0.rows.filter(r=>!r.imp),d=document.createElement("dialog");
+  d.style.cssText="width:min(96vw,560px);max-height:92vh;overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:16px";
+  const cur0=D0.rows[Math.max(0,Math.min(bst.i,D0.rows.length-1))];
+  d.innerHTML=`<b style="font-size:17px">Réclamation de notes</b><div class="s" style="margin:4px 0 10px">${esc(C.classe)} · ${esc(p)}. Corrigez les notes de l’élève : seul son rang est recalculé (comparé aux moyennes des autres élèves). Les rangs de tous les autres élèves restent figés, comme sur les bulletins déjà remis.</div>
+  <label>Élève</label><select id="rc_e" style="width:100%">${cands.map(r=>`<option value="${r.id}" ${r.id===cur0.id?"selected":""}>${esc(r.e.nom.toUpperCase()+" "+r.e.prenom)}</option>`).join("")}</select>
+  <div id="rc_n"></div>
+  <label style="margin-top:10px">Motif de la réclamation</label><input id="rc_m" style="width:100%;box-sizing:border-box" placeholder="Ex. note de devoir mal reportée">
+  <div class="s" id="rc_p" role="status" style="margin:10px 0;min-height:20px"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btnline" id="rc_c">Calculer</button><button type="button" class="btnline" id="rc_a">Appliquer la réclamation</button><button type="button" class="btnline" id="rc_x">Fermer</button></div>
+  <div id="rc_l"></div>`;
+  document.body.appendChild(d);
+  const q=s=>d.querySelector(s),msg=t=>{q("#rc_p").textContent=t},idSel=()=>+q("#rc_e").value;
+  const drawN=()=>{const id=idSel();q("#rc_n").innerHTML=D0.mats.map(m=>{const n=getN(id,m.matiere,p)||{};return`<div class="s" style="margin-top:8px"><b>${esc(m.matiere)}</b></div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">${[["i1","Int. 1"],["i2","Int. 2"],["dv","Devoir"],["cp","Compo"]].map(([k,l])=>`<input data-m="${esc(m.matiere)}" data-k="${k}" inputmode="decimal" placeholder="${l}" value="${esc(n[k]??"")}" style="min-width:0;box-sizing:border-box">`).join("")}</div>`}).join("");msg("")};
+  const drawL=()=>{const R=(db.recl||{})[key],cl=R?R.cl:{},ids=Object.keys(cl);
+    q("#rc_l").innerHTML=ids.length?`<div class="s" style="margin-top:12px"><b>Réclamations enregistrées</b></div>`+ids.map(id=>{const e=db.eleves.find(x=>x.id===+id),h=cl[id].hist[cl[id].hist.length-1];return`<div class="s">${esc(e?e.nom.toUpperCase()+" "+e.prenom:"Élève")} · ${fm(h.avant.mg)} (${h.avant.rk!=null?ord(h.avant.rk):"—"}) → ${fm(h.apres.mg)} (${h.apres.rk!=null?ord(h.apres.rk):"—"}) · ${esc(h.date.split("-").reverse().join("/"))} · ${esc(h.motif)}</div>`}).join(""):""};
+  const collect=()=>{const vals={};let bad="";d.querySelectorAll("#rc_n input").forEach(i=>{const m=i.dataset.m,k=i.dataset.k,v=i.value.trim().replace(",",".");if(v!==""&&!(isFinite(+v)&&+v>=0&&+v<=20))bad="Les notes doivent être entre 0 et 20 (« "+m+" »).";(vals[m]=vals[m]||{})[k]=v});return{vals,bad}};
+  const changed=(id,vals)=>{const o={};Object.keys(vals).forEach(m=>{const n=getN(id,m,p)||{},v=vals[m];if(["i1","i2","dv","cp"].some(k=>String(n[k]??"").trim().replace(",",".")!==v))o[m]=v});return o};
+  const rk=(D,id)=>{const r=D.rows.find(x=>x.id===id);if(!r||r.mg==null)return null;let n=1;D.rows.forEach(o=>{if(o.id!==id&&o.mg!=null&&Math.round(o.mg*100)>Math.round(r.mg*100))n++});return n};
+  q("#rc_e").onchange=drawN;q("#rc_x").onclick=()=>{d.close();d.remove()};d.addEventListener("cancel",()=>d.remove());
+  q("#rc_c").onclick=()=>{const id=idSel(),{vals,bad}=collect();if(bad)return msg(bad);const ch=changed(id,vals);if(!Object.keys(ch).length)return msg("Aucune note modifiée.");
+    const old=bulData(C,p),oldR=old.rows.find(r=>r.id===id),sim=reclSim(C,p,id,ch),nr=sim.rows.find(r=>r.id===id);
+    msg("Moyenne : "+fm(oldR.mg)+" (rang "+(old.rkG[id]!=null?ord(old.rkG[id]):"—")+") → "+fm(nr.mg)+" (nouveau rang "+(rk(sim,id)!=null?ord(rk(sim,id)):"—")+" sur "+sim.rows.length+"). Les autres rangs ne changent pas.")};
+  q("#rc_a").onclick=()=>{const id=idSel(),{vals,bad}=collect();if(bad)return msg(bad);const ch=changed(id,vals);if(!Object.keys(ch).length)return msg("Aucune note modifiée.");
+    const motif=q("#rc_m").value.trim();if(!motif)return msg("Indiquez le motif de la réclamation.");
+    if(!(db.recl&&db.recl[key]))reclSnap(C,p);
+    const R=db.recl[key],old=bulData(C,p),oldR=old.rows.find(r=>r.id===id),avant={mg:oldR.mg,rk:old.rkG[id]},nl=[];
+    Object.keys(ch).forEach(m=>{let n=getN(id,m,p);if(!n){n={e:id,m,p,i1:"",i2:"",dv:"",cp:""};db.notes.push(n)}nl.push({m,avant:{i1:n.i1,i2:n.i2,dv:n.dv,cp:n.cp},apres:ch[m]});Object.assign(n,ch[m])});
+    R.cl[id]=R.cl[id]||{hist:[]};
+    const nw=bulData(C,p),nr=nw.rows.find(r=>r.id===id);
+    R.cl[id].hist.push({date:new Date().toISOString().slice(0,10),motif,avant,apres:{mg:nr.mg,rk:nw.rkG[id]},notes:nl});
+    save();render();drawN();drawL();q("#rc_m").value="";
+    msg("Réclamation enregistrée : moyenne "+fm(avant.mg)+" → "+fm(nr.mg)+", rang "+(avant.rk!=null?ord(avant.rk):"—")+" → "+(nw.rkG[id]!=null?ord(nw.rkG[id]):"—")+". Les rangs des autres élèves sont inchangés.")};
+  drawN();drawL();d.showModal();
+}
 function annAll(C){
   const ps=PERS(C),Ds=ps.map(pp=>bulData(C,pp)),L=[];
   Ds[0].rows.forEach(r=>{const a=Ds.map(d=>d.rows.find(y=>y.id===r.id).mg).filter(v=>v!=null);if(a.length)L.push([r.id,a.reduce((s,x)=>s+x,0)/a.length])});
-  L.sort((x,y)=>y[1]-x[1]);const o=new Map();let rk=0;L.forEach((x,i)=>{if(!i||Math.round(L[i-1][1]*100)!==Math.round(x[1]*100))rk=i+1;o.set(x[0],{v:x[1],rk:ord(rk)})});return o}
+  L.sort((x,y)=>y[1]-x[1]);const o=new Map();let rk=0;L.forEach((x,i)=>{if(!i||Math.round(L[i-1][1]*100)!==Math.round(x[1]*100))rk=i+1;o.set(x[0],{v:x[1],rk:ord(rk)})});
+  const R=(db.recl||{})[reclKey(C,ps[ps.length-1])];
+  if(R&&R.ann){L.forEach(([id,v])=>{if((R.cl||{})[id]){let n=1;L.forEach(([i2,v2])=>{if(i2!==id&&Math.round(v2*100)>Math.round(v*100))n++});o.set(id,{v,rk:ord(n)})}else if(R.ann[id]&&R.ann[id].rk)o.set(id,{v,rk:ord(R.ann[id].rk)})})}
+  return o}
 function bulSpec(B,C,p,E,ann,dc,d){
   const M=B.M,e=M.r.e,ap=v=>v==null?"":appr(v),nl=s=>String(s||"").split(/\r?\n/).map(x=>x.trim()).join("\n");
   const U=[7.3,5.1,5.7,5.1,5.3,5.1,3.3,6.2,3.7,9.2,9.3,7.1],cw=U.map(u=>(u*7+5)*.75),cx=[0];cw.forEach((w,i)=>cx.push(cx[i]+w));
@@ -1325,8 +1407,8 @@ function renderBulletin(){
   const C=db.classes.find(c=>c.classe===bst.c),L=$("#list"),E=db.etab;L.classList.add("plain");
   const sel=(id,opts,val,ph)=>`<select id="${id}"><option value="">${ph}</option>${opts.map(o=>`<option ${o===val?"selected":""}>${esc(o)}</option>`).join("")}</select>`;
   const ps=C?PERS(C):[];if(!ps.includes(bst.p))bst.p="";
-  $("#tools").innerHTML=`<div class="ntools">${sel("bc",cls(),bst.c,"Classe…")}${sel("bp",ps,bst.p,"Période…")}<button class="btnline" id="etb">Informations de l’établissement</button></div>`;
-  $("#bc").onchange=e=>{bst.c=e.target.value;bst.i=0;render()};$("#bp").onchange=e=>{bst.p=e.target.value;bst.i=0;render()};$("#etb").onclick=openEtab;
+  $("#tools").innerHTML=`<div class="ntools">${sel("bc",cls(),bst.c,"Classe…")}${sel("bp",ps,bst.p,"Période…")}<button class="btnline" id="rcl">Réclamation de notes</button><button class="btnline" id="etb">Informations de l’établissement</button></div>`;
+  $("#bc").onchange=e=>{bst.c=e.target.value;bst.i=0;render()};$("#bp").onchange=e=>{bst.p=e.target.value;bst.i=0;render()};$("#etb").onclick=openEtab;if($("#rcl"))$("#rcl").onclick=reclOpen;
   if(!C||!bst.p){L.innerHTML=`<li class="hint" style="padding-left:16px">Choisissez la classe et la période.</li>`;return}
   const D=bulData(C,bst.p);
   if(!D.rows.length){L.innerHTML=`<li class="hint" style="padding-left:16px">Aucun élève dans cette classe.</li>`;return}
@@ -1398,7 +1480,7 @@ function parcoursApply(plan,doAb){
     });
     p.aj.forEach(e=>{e.statut="Redoublant";r.rep++});
   });
-  db.notes=[];db.nat={};db.eleves.forEach(e=>{delete e.nat});
+  db.notes=[];db.recl={};db.nat={};db.eleves.forEach(e=>{delete e.nat});
   save();return r;
 }
 function renderParcours(L){
@@ -1432,10 +1514,25 @@ function openAbandon(){
   d.querySelector("#ab_y").onclick=()=>{const id=+d.querySelector("#ab_e").value,e=db.eleves.find(x=>x.id===id);if(!e)return d.querySelector("#ab_m").textContent="Choisissez l’élève.";archivePush(e,"Abandon",{date:d.querySelector("#ab_d").value||new Date().toISOString().slice(0,10),remarque:d.querySelector("#ab_r").value.trim()});save();done();render()};
   d.showModal();
 }
+function reintegrer(i,o){
+  const a=db.archives[i];o=o||{};
+  const e={id:a.id,matricule:a.matricule,nom:a.nom,prenom:a.prenom,sexe:o.sexe||a.sexe,classe:o.classe||a.classe,statut:o.statut||a.statut,naissance:o.naissance||a.naissance||""};
+  if(o.transfert)e.transfert=o.transfert;
+  if(db.eleves.some(x=>x.id===e.id))e.id=db.seq++;
+  db.eleves.push(e);
+  if(a.annee===anneeSco()&&e.classe===a.classe&&e.id===a.id&&Array.isArray(a.notes))db.notes.push(...a.notes);
+  db.archives.splice(i,1);
+}
+async function reintegrerArchive(i){
+  const a=(db.archives||[])[i];if(!a)return;
+  if(!db.classes.some(c=>c.classe===a.classe)){alert("La classe "+a.classe+" n’existe plus. Utilisez « Ajouter » avec le nom de l’élève et la classe voulue : la réintégration vous sera proposée.");return}
+  if(!await confirmUI("Réintégrer "+a.nom.toUpperCase()+" "+a.prenom+" en "+a.classe+" ?","Réintégrer"))return;
+  reintegrer(i);save();render();
+}
 function archSection(){
   const s=q.trim().toLowerCase(),A=(db.archives||[]).filter(a=>(!fc||a.classe===fc)&&(!s||(a.nom+" "+a.prenom).toLowerCase().includes(s)||matriculeAffiche(a.matricule).includes(s)||String(a.matricule??"").includes(s)));
   if(!showArch&&!s)return"";
-  return`<li class="hint">Archives : ${A.length} élève(s)${s?" correspondant à la recherche":""}</li>`+A.map(a=>`<li><div class="row" style="cursor:default"><span class="num">▣</span><span class="txt"><div class="t">${esc(a.nom.toUpperCase()+" "+a.prenom)} · Archivé</div><div class="s">${esc(a.decision)} · Matricule ${esc(matriculeAffiche(a.matricule)||"—")} · ${esc(a.classe)} · ${esc(a.annee)}${a.date?" · "+esc(a.date.split("-").reverse().join("/")):""}${a.remarque?" · "+esc(a.remarque):""}</div></span></div></li>`).join("");
+  return`<li class="hint">Archives : ${A.length} élève(s)${s?" correspondant à la recherche":""}</li>`+A.map(a=>`<li><div class="row" style="cursor:default"><span class="num">▣</span><span class="txt"><div class="t">${esc(a.nom.toUpperCase()+" "+a.prenom)} · Archivé</div><div class="s">${esc(a.decision)} · Matricule ${esc(matriculeAffiche(a.matricule)||"—")} · ${esc(a.classe)} · ${esc(a.annee)}${a.date?" · "+esc(a.date.split("-").reverse().join("/")):""}${a.remarque?" · "+esc(a.remarque):""}</div><button type="button" class="btnline" style="margin-top:6px" onclick="reintegrerArchive(${db.archives.indexOf(a)})">Réintégrer</button></span></div></li>`).join("");
 }
 function abandonsHTML(C){
   const A=(db.archives||[]).filter(a=>a.decision==="Abandon"&&a.classe===C.classe);
@@ -1454,7 +1551,7 @@ function doWipe(s){const has=k=>s.includes(k);
   if(has("classes")){db.classes=[];s.push("eleves");db.profs.forEach(p=>{p.ens=[];p.titulaire=""})}
   if(has("matieres")){db.matieres=[];s.push("notes");db.profs.forEach(p=>{p.ens=[]})}
   if(has("eleves")){db.eleves=[];s.push("notes")}
-  if(has("notes")){db.notes=[];db.seen={}}
+  if(has("notes")){db.notes=[];db.recl={};db.seen={}}
   if(has("profs")){db.profs=[];s.push("edtres")}
   if(has("exams")){db.exams=[];db.nat={}}
   if(has("edt"))db.edt={refus:{},apm:{},jum:false,res:null};else if(has("edtres")||has("classes")||has("matieres"))db.edt&&(db.edt.res=null);
