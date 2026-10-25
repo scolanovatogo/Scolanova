@@ -556,7 +556,7 @@ function bonusPlan(D,r,Oth,p){
   if(sd>1)return{ok:false,why:"répartition trop inégale entre les matières"};
   return{ok:true,add};
 }
-function bulData(C,p){
+function bulDataB(C,p){
   const D=bulData0(C,p),ps=PERS(C),th=C.passage==null||String(C.passage).trim()===""?NaN:Number(String(C.passage).replace(",","."));
   if(!ps.length||p!==ps[ps.length-1]||!Number.isFinite(th)||th>=10)return D;
   const O=ps.slice(0,-1).map(pp=>bulData0(C,pp));
@@ -574,6 +574,87 @@ function bulData(C,p){
   });
   D.rkG=rkOf(D.rows,"mg");
   return D;
+}
+// ---------- Réclamations de notes : classements figés une fois les bulletins distribués ----------
+function reclDB(){db.recl=db.recl||{};db.recl.snap=db.recl.snap||{};db.recl.ann=db.recl.ann||{};db.recl.log=db.recl.log||[];return db.recl}
+function effRank(fz,id,val){   // rang d'un élève dont la moyenne a changé, par rapport aux moyennes figées des autres
+  if(val==null)return null;const r=Math.round(val*100);let g=0;
+  for(const k in fz.v){if(String(k)===String(id)||fz.v[k]==null)continue;const o=Math.round(fz.v[k]*100);if(o===r)return fz.rk[k];if(o>r)g++}
+  return g+1;
+}
+function claimIds(C,P){return new Set(((db.recl||{}).log||[]).filter(l=>l.classe===C.classe&&(P==null||l.periode===P)).map(l=>String(l.id)))}
+function claimMats(C,P){return new Set(((db.recl||{}).log||[]).filter(l=>l.classe===C.classe&&l.periode===P).map(l=>l.id+"|"+l.matiere))}
+function bulData(C,p){
+  const D=bulDataB(C,p),fz=((db.recl||{}).snap||{})[C.classe+"|"+p];if(!fz)return D;
+  const cl=claimIds(C,p);D.fz=fz;D.claim=cl;D.claimM=claimMats(C,p);D.rkG=Object.assign({},D.rkG);
+  D.rows.forEach(r=>{if(cl.has(String(r.id))){const v=effRank(fz,r.id,r.mg);if(v!=null)D.rkG[r.id]=v}else if(fz.rk[r.id]!=null)D.rkG[r.id]=fz.rk[r.id]});
+  return D;
+}
+function stOf(a){const v=a.filter(x=>x!=null);return{mx:v.length?Math.max(...v):null,mn:v.length?Math.min(...v):null,av:v.length?v.reduce((x,y)=>x+y,0)/v.length:null}}
+function freezePeriod(C,P){
+  const R=reclDB(),key=C.classe+"|"+P;if(R.snap[key])return false;
+  const D=bulData(C,P),today=new Date().toISOString().slice(0,10),fz={v:{},rk:{},m:{},at:today};
+  D.rows.forEach(r=>{fz.v[r.id]=r.mg;if(D.rkG[r.id]!=null)fz.rk[r.id]=D.rkG[r.id]});
+  D.mats.forEach(m=>{const v={},rk=rkOf(D.rows.map(x=>({id:x.id,mo:x.per[m.matiere].mo})),"mo");D.rows.forEach(x=>{v[x.id]=x.per[m.matiere].mo});fz.m[m.matiere]={v,rk}});
+  fz.st=stOf(D.rows.map(x=>x.mg));R.snap[key]=fz;
+  const ps=PERS(C);
+  if(P===ps[ps.length-1]&&!R.ann[C.classe]){const A=annAll(C),L=[...A.entries()].map(([id,x])=>({id,v:x.v})),rk=rkOf(L,"v"),a={v:{},rk:{},at:today};L.forEach(o=>{a.v[o.id]=o.v;a.rk[o.id]=rk[o.id]});a.st=stOf(L.map(o=>o.v));R.ann[C.classe]=a}
+  save();return true;
+}
+// ---------- Formulaire de réclamation de notes ----------
+let rclOpen=false;const rst={p:"",id:"",m:"",f:"cp"};
+const RCF={i1:"Interrogation 1",i2:"Interrogation 2",dv:"Devoir",cp:"Composition"};
+const fdl=d=>d?String(d).slice(0,10).split("-").reverse().join("/"):"";
+function reclHTML(C){return`<div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="rcb">Réclamation de notes</button></div><div id="rcx" style="display:${rclOpen?"block":"none"};padding:0 14px 8px">${rclOpen?reclPanel(C):""}</div>`}
+function reclPanel(C){
+  const ps=PERS(C),els=db.eleves.filter(e=>e.classe===C.classe).sort(ENT.eleves.sort),mats=db.matieres.filter(m=>m.niveau===C.niveau);
+  if(!ps.includes(rst.p))rst.p=ps.includes(bst.p)?bst.p:ps[0]||"";
+  const o=(a,v)=>a.map(x=>`<option value="${esc(x[0])}" ${String(x[0])===String(v)?"selected":""}>${esc(x[1])}</option>`).join(""),
+    n=rst.id&&rst.m?getN(+rst.id,rst.m,rst.p):null,old=n?nn(n[rst.f]):null,fz=((db.recl||{}).snap||{})[C.classe+"|"+rst.p];
+  const L=((db.recl||{}).log||[]).filter(l=>l.classe===C.classe);
+  return`<div class="s" style="padding-bottom:6px">Une fois les bulletins distribués, toute correction de note passe par ce formulaire : seule la moyenne et le rang de l’élève concerné sont recalculés, par rapport aux classements déjà remis aux autres élèves (qui ne changent pas).</div>
+  <div style="display:grid;gap:8px"><select id="rp">${o(ps.map(x=>[x,x]),rst.p)}</select><select id="re"><option value="">Élève…</option>${o(els.map(e=>[e.id,e.nom.toUpperCase()+" "+e.prenom]),rst.id)}</select><select id="rm"><option value="">Matière…</option>${o(mats.map(m=>[m.matiere,m.matiere]),rst.m)}</select><select id="rf">${o(Object.entries(RCF),rst.f)}</select>
+  <div>Ancienne note : <b>${rst.id&&rst.m?(old==null?"non saisie":fmScore(old)):"—"}</b></div><input id="rn" inputmode="decimal" placeholder="Nouvelle note sur 20"><input id="rj" placeholder="Motif ou référence de la réclamation"><button class="btnline" id="rv">Valider la réclamation</button></div>
+  <div class="s" id="rcm" role="status" style="padding:6px 0">${fz?"Classements de cette période figés le "+fdl(fz.at)+".":"Classements de cette période pas encore figés : ils le seront automatiquement à la première réclamation."}</div>
+  ${fz?"":`<div class="nav2" style="padding:0 0 6px"><button class="btnline" id="rz">Figer maintenant (bulletins distribués)</button></div>`}
+  ${L.length?`<div style="overflow-x:auto"><table class="st"><thead><tr><th>Date</th><th>Élève</th><th>Période</th><th>Matière</th><th>Note</th><th>Ancienne</th><th>Nouvelle</th><th>Moyenne</th><th>Rang</th><th>Motif</th><th></th></tr></thead><tbody>${L.map((l,i)=>`<tr><td>${fdl(l.date)}</td><td class="l">${esc(l.eleve)}</td><td>${esc(l.periode)}</td><td class="l">${esc(l.matiere)}</td><td>${esc(RCF[l.champ])}</td><td>${l.ancienne==null?"—":fmScore(l.ancienne)}</td><td>${fmScore(l.nouvelle)}</td><td>${fmScore(l.moyAv)} → ${fmScore(l.moyAp)}</td><td>${l.rkAv==null?"—":ord(l.rkAv)} → ${l.rkAp==null?"—":ord(l.rkAp)}</td><td class="l">${esc(l.motif)}</td><td><button class="btnline rfp" data-i="${((db.recl||{}).log||[]).indexOf(l)}">Fiche</button></td></tr>`).join("")}</tbody></table></div>`:""}`;
+}
+function reclApply(C){
+  const m=t=>{const b=$("#rcm");if(b)b.textContent=t},P=rst.p,id=+rst.id,mat=rst.m,f=rst.f,nv=nn(String($("#rn").value).trim().replace(",",".")),mo=String($("#rj").value||"").trim();
+  if(!P||!id||!mat)return m("Choisissez la période, l’élève et la matière.");
+  if(nv==null||nv<0||nv>20)return m("La nouvelle note doit être un nombre entre 0 et 20.");
+  if(!mo)return m("Indiquez le motif ou la référence de la réclamation.");
+  freezePeriod(C,P);
+  const D0=bulData(C,P),r0=D0.rows.find(x=>x.id===id),e=db.eleves.find(x=>x.id===id);let n=getN(id,mat,P);
+  const old=n?nn(n[f]):null;if(old!==null&&old===nv)return m("La nouvelle note est identique à l’ancienne.");
+  if(!n){n={e:id,m:mat,p:P,i1:"",i2:"",dv:"",cp:""};db.notes.push(n)}
+  const moyAv=r0.mg,rkAv=D0.rkG[id]==null?null:D0.rkG[id];
+  n[f]=String(nv);
+  const R=reclDB(),ent={id,eleve:e.nom.toUpperCase()+" "+e.prenom,classe:C.classe,periode:P,matiere:mat,champ:f,ancienne:old,nouvelle:nv,motif:mo,date:new Date().toISOString().slice(0,10),moyAv,moyAp:null,rkAv,rkAp:null};
+  R.log.push(ent);const D1=bulData(C,P),r1=D1.rows.find(x=>x.id===id);ent.moyAp=r1.mg;ent.rkAp=D1.rkG[id]==null?null:D1.rkG[id];
+  save();rclOpen=true;renderBulletin();
+}
+function reclPDF(l){
+  const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;const doc=new J({unit:"mm",format:"a4"}),E=db.etab;
+  doc.setFont("times","bold").setFontSize(12).text([E.nom||"","Année scolaire "+anneeSco()],105,14,{align:"center"});
+  doc.setFontSize(15).text("FICHE DE RÉCLAMATION DE NOTE",105,34,{align:"center"});
+  const rows=[["Élève",l.eleve],["Classe",l.classe],["Période",l.periode],["Matière",l.matiere],["Note concernée",RCF[l.champ]],["Ancienne note",l.ancienne==null?"non saisie":fmScore(l.ancienne)],["Nouvelle note",fmScore(l.nouvelle)],["Moyenne de la période",fmScore(l.moyAv)+"  →  "+fmScore(l.moyAp)],["Rang",(l.rkAv==null?"—":ord(l.rkAv))+"  →  "+(l.rkAp==null?"—":ord(l.rkAp))],["Motif / référence",l.motif],["Date",fdl(l.date)]];
+  let y=52;rows.forEach(r=>{doc.setFont("times","bold").setFontSize(11).text(r[0]+" :",20,y);doc.setFont("times","normal");const t=doc.splitTextToSize(String(r[1]),120);doc.text(t,72,y);y+=Math.max(9,t.length*6)});
+  doc.setFont("times","italic").setFontSize(9).text(doc.splitTextToSize("Seuls la moyenne et le rang de l’élève concerné ont été recalculés ; les classements remis aux autres élèves restent inchangés.",170),20,y+4);
+  doc.setFont("times","normal").setFontSize(11).text("Le professeur de la matière",20,y+28);doc.text("Le Directeur",190,y+28,{align:"right"});doc.text(E.directeur||"",190,y+48,{align:"right"});
+  return doc;
+}
+function bindRecl(C){
+  const b=$("#rcb");if(!b)return;const x=$("#rcx");
+  const wire=()=>{
+    const re=()=>{x.innerHTML=reclPanel(C);wire()};
+    $("#rp").onchange=e=>{rst.p=e.target.value;re()};$("#re").onchange=e=>{rst.id=e.target.value;re()};$("#rm").onchange=e=>{rst.m=e.target.value;re()};$("#rf").onchange=e=>{rst.f=e.target.value;re()};
+    $("#rv").onclick=()=>reclApply(C);
+    if($("#rz"))$("#rz").onclick=()=>{freezePeriod(C,rst.p);rclOpen=true;renderBulletin()};
+    x.querySelectorAll(".rfp").forEach(k=>k.onclick=()=>{const l=db.recl.log[+k.dataset.i];saveDoc(reclPDF(l),"Fiche-reclamation-"+l.eleve.replace(/\s+/g,"-")+"-"+l.matiere+".pdf",t=>{const m=$("#rcm");if(m)m.textContent=t})});
+  };
+  b.onclick=()=>{rclOpen=!rclOpen;x.style.display=rclOpen?"block":"none";if(rclOpen){x.innerHTML=reclPanel(C);wire()}};
+  if(rclOpen)wire();
 }
 // Bonification du conseil de classe : choix des élèves, motifs et relevé (trace interne, présentable en cas de contrôle)
 let bonOpen=false;
@@ -624,12 +705,17 @@ function relevePDF(C){
   doc.text((E.lieu||"")+", le "+(fdate(E.dateConseil)||new Date().toLocaleDateString("fr-FR")),10,y);doc.text("Le Directeur",190,y,{align:"right"});doc.text(E.directeur||"",190,y+16,{align:"right"});
   return doc;
 }
+function annAll(C){
+  const o=annAll0(C),A=((db.recl||{}).ann||{})[C.classe];if(!A)return o;const cl=claimIds(C);
+  o.forEach((x,id)=>{if(cl.has(String(id))){const v=effRank(A,id,x.v);if(v!=null)x.rk=ord(v)}else if(A.rk[id]!=null)x.rk=ord(A.rk[id])});
+  return o;
+}
 const pname=p=>p.replace(/^1er/,"Premier").replace(/^2e/,"Deuxième").replace(/^3e/,"Troisième");
 const ETAB=[["ministere","Ministère (2 lignes : touche Entrée pour passer à la ligne)"],["pays","Pays"],["devise","Devise"],["direction","Direction régionale (2 lignes)"],["inspection","Inspection (2 lignes)"],["nom","Établissement"],["numero","N° de l’établissement"],["tel","Téléphone"],["lieu","Lieu"],["directeur","Nom du directeur / proviseur"],["dateConseil","Date du conseil de classe"]];
 function etabDef(){const d=new Date(),y=d.getFullYear(),a=d.getMonth()>=8?y+" - "+(y+1):(y-1)+" - "+y;return{ministere:"Ministère de l’éducation\nnationale",pays:"République togolaise",devise:"Travail - Liberté - Patrie",direction:"",inspection:"",nom:"",numero:"",tel:"",annee:a,lieu:"",directeur:""}}
 function bulModel(C,p,D,k){
   const r=D.rows[k],eff=D.rows.length,ps=PERS(C),mrk={};
-  D.mats.forEach(m=>{mrk[m.matiere]=rkOf(D.rows.map(x=>({id:x.id,mo:x.per[m.matiere].mo})),"mo")});
+  D.mats.forEach(m=>{mrk[m.matiere]=rkOf(D.rows.map(x=>({id:x.id,mo:x.per[m.matiere].mo})),"mo");const f=D.fz&&D.fz.m[m.matiere];if(f)D.rows.forEach(x=>{if(D.claimM.has(x.id+"|"+m.matiere)){const v=effRank(f,x.id,x.per[m.matiere].mo);if(v!=null)mrk[m.matiere][x.id]=v}else if(f.rk[x.id]!=null)mrk[m.matiere][x.id]=f.rk[x.id]})});
   let tc=0,ts=0;
   const lines=D.mats.map(m=>{const x=r.per[m.matiere],n=getN(r.id,m.matiere,p)||{},pr=db.profs.find(q=>q.ens.includes(m.matiere+"|"+C.classe));if(x.mo!=null){tc+=+m.coef;ts+=x.mp}
     return[m.matiere,[n.i1,n.i2,n.dv].filter(v=>v!==""&&v!=null).map(v=>fmScore(nn(v))).join(" · ")||"—",fmScore(x.mc),fmScore(nn(n.cp)!=null?nn(n.cp)+((r.bonus||{})[m.matiere]||0):null),String(m.coef),fmScore(x.mp),x.mo!=null?mrk[m.matiere][r.id]+"/"+eff:"—",appr(x.mo),pr?profShort(pr):""]});
@@ -721,7 +807,8 @@ function bulM2(C,p,D,k){
   const mg=(PERS(C).indexOf(p)===PERS(C).length-1?[...annAll(C).values()].map(a=>a.v):D.rows.map(x=>x.mg)).filter(x=>x!=null);   // dernière période : moyennes annuelles
   const ps=PERS(C),ix=ps.indexOf(p),all=ps.map(pp=>pp===p?r.mg:bulData(C,pp).rows.find(y=>y.id===r.id).mg).filter(v=>v!=null),ref=ix>=1&&ix===ps.length-1?(all.length?all.reduce((a,b)=>a+b,0)/all.length:null):r.mg,ml=[[12,"Tableau d’honneur"],[14,"Encouragements"],[15,"Félicitations"]].map(t=>ref!=null&&ref>=t[0]?t[1]:"---");
   if(ix>=1&&ix===ps.length-1&&ref!=null)M.trav=appr(ref);   // dernière période : appréciation de la moyenne annuelle
-  return{ml,M,rows,perf,trims,mx:mg.length?Math.max(...mg):null,mn:mg.length?Math.min(...mg):null,av:mg.length?mg.reduce((a,b)=>a+b,0)/mg.length:null,no:String(k+1).padStart(3,"0"),rk:M.rk?ord(M.rk.split("/")[0]):""};
+  const ST=ix===ps.length-1?(((db.recl||{}).ann||{})[C.classe]||{}).st:(D.fz||{}).st;
+  return{ml,M,rows,perf,trims,mx:ST&&ST.mx!==undefined?ST.mx:(mg.length?Math.max(...mg):null),mn:ST&&ST.mn!==undefined?ST.mn:(mg.length?Math.min(...mg):null),av:ST&&ST.av!==undefined?ST.av:(mg.length?mg.reduce((a,b)=>a+b,0)/mg.length:null),no:String(k+1).padStart(3,"0"),rk:M.rk?ord(M.rk.split("/")[0]):""};
 }
 const mp2=(rows,sp)=>{let o=[],g=-1;rows.forEach(r=>{if(g>=0&&r.g!==g)o.push(sp);g=r.g;o.push(r)});return o};
 function renderBulletin(){
@@ -1296,7 +1383,7 @@ const BKF={"b": "AAEAAAAKAIAAAwAgT1MvMkXO5L8AAAEoAAAAYGNtYXCEQ4TdAAAEpAAAAahnbHl
 (function(){const st=document.createElement("style");st.textContent=[["b",700,"normal"],["bi",700,"italic"],["r",400,"normal"],["ri",400,"italic"]].map(([k,w,s])=>`@font-face{font-family:"ScolaBook";font-weight:${w};font-style:${s};src:url(data:font/ttf;base64,${BKF[k]}) format("truetype")}`).join("");document.head.appendChild(st)})();
 const BKFAM="'ScolaBook','Bookman Old Style',Bookman,'URW Bookman',Georgia,serif";
 function imgSize(u){try{const b=atob(u.split(",")[1].slice(0,60000));if(u.indexOf("image/png")>0)return[(b.charCodeAt(16)<<24|b.charCodeAt(17)<<16|b.charCodeAt(18)<<8|b.charCodeAt(19)),(b.charCodeAt(20)<<24|b.charCodeAt(21)<<16|b.charCodeAt(22)<<8|b.charCodeAt(23))];let i=2;while(i<b.length){if(b.charCodeAt(i)!==255)break;const m=b.charCodeAt(i+1),l=b.charCodeAt(i+2)<<8|b.charCodeAt(i+3);if(m>=192&&m<=195)return[b.charCodeAt(i+7)<<8|b.charCodeAt(i+8),b.charCodeAt(i+5)<<8|b.charCodeAt(i+6)];i+=2+l}}catch(e){}return[1,1]}
-function annAll(C){
+function annAll0(C){
   const ps=PERS(C),Ds=ps.map(pp=>bulData(C,pp)),L=[];
   Ds[0].rows.forEach(r=>{const a=Ds.map(d=>d.rows.find(y=>y.id===r.id).mg).filter(v=>v!=null);if(a.length)L.push([r.id,a.reduce((s,x)=>s+x,0)/a.length])});
   L.sort((x,y)=>y[1]-x[1]);const o=new Map();let rk=0;L.forEach((x,i)=>{if(!i||Math.round(L[i-1][1]*100)!==Math.round(x[1]*100))rk=i+1;o.set(x[0],{v:x[1],rk:ord(rk)})});return o}
@@ -1395,12 +1482,12 @@ function renderBulletin(){
   if(!D.rows.length){L.innerHTML=`<li class="hint" style="padding-left:16px">Aucun élève dans cette classe.</li>`;return}
   bst.i=Math.max(0,Math.min(bst.i,D.rows.length-1));
   const B=bulM2(C,bst.p,D,bst.i),M=B.M,d=new Date().toLocaleDateString("fr-FR"),dc=fdate(E.dateConseil)||d,R=bulRender(bulSpec(B,C,bst.p,E,annAll(C),dc,d));
-  L.innerHTML=`<li class="bul">${abandonNoticeHTML(C,bst.p)}<div style="overflow:auto"><div id="bkw" style="width:${R.wpx}px;height:${R.hpx}px">${R.html}</div></div><div class="nav2" style="padding:8px 14px 4px"><button class="btnline" id="bpv" ${bst.i===0?"disabled":""}>Précédent</button><button class="btnline" id="bnx" ${bst.i===M.eff-1?"disabled":""}>Élève suivant</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bp1">PDF de cet élève</button><button class="btnline" id="bp2">PDF de la classe</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bpr1">Imprimer cet élève</button><button class="btnline" id="bpr2">Imprimer la classe</button></div>${releveHTML(C,bst.p)}<div class="s" id="bmsg" role="status" style="padding:0 16px 14px"></div></li>`;
+  L.innerHTML=`<li class="bul">${abandonNoticeHTML(C,bst.p)}<div style="overflow:auto"><div id="bkw" style="width:${R.wpx}px;height:${R.hpx}px">${R.html}</div></div><div class="nav2" style="padding:8px 14px 4px"><button class="btnline" id="bpv" ${bst.i===0?"disabled":""}>Précédent</button><button class="btnline" id="bnx" ${bst.i===M.eff-1?"disabled":""}>Élève suivant</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bp1">PDF de cet élève</button><button class="btnline" id="bp2">PDF de la classe</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bpr1">Imprimer cet élève</button><button class="btnline" id="bpr2">Imprimer la classe</button></div>${releveHTML(C,bst.p)}${reclHTML(C)}<div class="s" id="bmsg" role="status" style="padding:0 16px 14px"></div></li>`;
   const w=$("#bkw"),av=w.parentElement.clientWidth||360,s=Math.max(.8,Math.min(1.25,(av-4)/R.wpx));w.style.width=(R.wpx*s)+"px";w.style.height=(R.hpx*s)+"px";w.firstChild.style.transform=`scale(${s})`;
   if($("#abx"))$("#abx").onclick=async()=>{const l=abandonList(C)||[];if(!await confirmUI("Archiver "+l.length+" élève(s) sans notes comme abandons ?","Archiver"))return;l.forEach(e=>archivePush(e,"Abandon"));save();bst.i=0;render()};
   $("#bpv").onclick=()=>{bst.i--;renderBulletin()};$("#bnx").onclick=()=>{bst.i++;renderBulletin()};
   $("#bp1").onclick=()=>dlPDF(C,false);$("#bp2").onclick=()=>dlPDF(C,true);$("#bpr1").onclick=()=>printBulletins(C,false);$("#bpr2").onclick=()=>printBulletins(C,true);
-  bindBonus(C);
+  bindBonus(C);bindRecl(C);
 }
 
 function printBulletins(C,all){
@@ -1447,7 +1534,7 @@ function parcoursApply(plan,doAb){
     });
     p.aj.forEach(e=>{e.statut="Redoublant";r.rep++});
   });
-  db.notes=[];db.nat={};db.eleves.forEach(e=>{delete e.nat});
+  db.notes=[];db.nat={};db.bonus={};db.recl=null;db.eleves.forEach(e=>{delete e.nat});
   save();return r;
 }
 function renderParcours(L){
@@ -1503,7 +1590,7 @@ function doWipe(s){const has=k=>s.includes(k);
   if(has("classes")){db.classes=[];s.push("eleves");db.profs.forEach(p=>{p.ens=[];p.titulaire=""})}
   if(has("matieres")){db.matieres=[];s.push("notes");db.profs.forEach(p=>{p.ens=[]})}
   if(has("eleves")){db.eleves=[];s.push("notes")}
-  if(has("notes")){db.notes=[];db.seen={}}
+  if(has("notes")){db.notes=[];db.seen={};db.bonus={};db.recl=null}
   if(has("profs")){db.profs=[];s.push("edtres")}
   if(has("exams")){db.exams=[];db.nat={}}
   if(has("edt"))db.edt={refus:{},apm:{},jum:false,res:null};else if(has("edtres")||has("classes")||has("matieres"))db.edt&&(db.edt.res=null);
