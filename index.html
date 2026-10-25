@@ -571,7 +571,7 @@ function bulModel(C,p,D,k){
   const lines=D.mats.map(m=>{const x=r.per[m.matiere],n=getN(r.id,m.matiere,p)||{},pr=db.profs.find(q=>q.ens.includes(m.matiere+"|"+C.classe));if(x.mo!=null){tc+=+m.coef;ts+=x.mp}
     return[m.matiere,[n.i1,n.i2,n.dv].filter(v=>v!==""&&v!=null).map(v=>fmScore(nn(v))).join(" · ")||"—",fmScore(x.mc),fmScore(nn(n.cp)),String(m.coef),fmScore(x.mp),x.mo!=null?mrk[m.matiere][r.id]+"/"+eff:"—",appr(x.mo),pr?profShort(pr):""]});
   const mgs=D.rows.map(x=>x.mg).filter(x=>x!=null),av=mgs.length?mgs.reduce((a,b)=>a+b,0)/mgs.length:null;
-  const others=ps.map(pp=>{const d=bulData(C,pp),x=d.rows.find(y=>y.id===r.id);return["Moyenne, "+pp,fmScore(x.mg),x.mg!=null?(x.imp?String(d.rkG[r.id]):d.rkG[r.id]+"/"+eff):"—"]});
+  const others=ps.slice(0,ps.indexOf(p)+1).map(pp=>{const d=bulData(C,pp),x=d.rows.find(y=>y.id===r.id);return["Moyenne, "+pp,fmScore(x.mg),x.mg!=null?(x.imp?String(d.rkG[r.id]):d.rkG[r.id]+"/"+eff):"—"]});
   const tit=db.profs.find(q=>q.titulaire===C.classe);
   return{r,eff,lines,tot:["Totaux","","","",String(tc),fmScore(ts),"","",""],others,mg:r.mg,rk:r.mg!=null?D.rkG[r.id]+"/"+eff:"",trav:appr(r.mg)||"—",
     ment:r.mg==null?"":r.mg>=16?"Encouragements":r.mg>=14?"Félicitations":r.mg>=12?"Tableau d’honneur":"",
@@ -654,7 +654,7 @@ function bulM2(C,p,D,k){
   const G=m=>/^(Français|Anglais|ECM|Histo|Allemand|Espagnol|Philosophie)/.test(m)?0:/^(Maths|PCT|SVT|Informatique)/.test(m)?1:2;
   const rows=D.mats.map((m,i)=>{const n=getN(r.id,m.matiere,p)||{},a=M.lines[i],f=v=>v===""||v==null?"":fmScore(nn(v));return{g:G(m.matiere),m,x:r.per[m.matiere],c:[abMat(a[0]),f(n.i1),f(n.i2),f(n.dv),a[2],a[3]==="—"?"":a[3],a[4],a[5],ordR(a[6]==="—"?"":a[6]),a[7]==="—"?"":a[7],a[8]]}});
   const perf=[0,1,2].map(g=>{let s=0,c=0;rows.filter(o=>o.g===g&&o.x.mo!=null).forEach(o=>{s+=o.x.mp;c+=+o.m.coef});return c?s/c:null});
-  const trims=PERS(C).map(pp=>{const d=bulData(C,pp),x=d.rows.find(y=>y.id===r.id);return{l:pp,v:x.mg,rk:x.mg!=null?ord(d.rkG[r.id]):""}});
+  const trims=PERS(C).slice(0,PERS(C).indexOf(p)+1).map(pp=>{const d=bulData(C,pp),x=d.rows.find(y=>y.id===r.id);return{l:pp,v:x.mg,rk:x.mg!=null?ord(d.rkG[r.id]):""}});
   const mg=(PERS(C).indexOf(p)===PERS(C).length-1?[...annAll(C).values()].map(a=>a.v):D.rows.map(x=>x.mg)).filter(x=>x!=null);   // dernière période : moyennes annuelles
   const ps=PERS(C),ix=ps.indexOf(p),all=ps.map(pp=>pp===p?r.mg:bulData(C,pp).rows.find(y=>y.id===r.id).mg).filter(v=>v!=null),ref=ix>=1&&ix===ps.length-1?(all.length?all.reduce((a,b)=>a+b,0)/all.length:null):r.mg,ml=[[12,"Tableau d’honneur"],[14,"Encouragements"],[15,"Félicitations"]].map(t=>ref!=null&&ref>=t[0]?t[1]:"---");
   if(ix>=1&&ix===ps.length-1&&ref!=null)M.trav=appr(ref);   // dernière période : appréciation de la moyenne annuelle
@@ -1269,7 +1269,7 @@ function bulSpec(B,C,p,E,ann,dc,d){
   cell(t,1,"Totaux",{h:"l"});cell(t,7,M.tot[4]);cell(t,8,M.tot[5]);for(let c=1;c<=12;c++)vl(c,t,t);vl(13,t,t);hl(t,1,12);hl(t+1,1,12);box(14,1,t,12,"m");
   // moyennes périodes
   const T=B.trims.map(x=>({l:"Moy. "+x.l.replace(/trimestre/i,"Trimestre").replace(/semestre/i,"Semestre"),v:x.v,rk:x.rk})),AN=ann.get(M.r.id)||{};
-  T.concat(PERS(C).indexOf(p)===PERS(C).length-1?[{l:"Moy annuelle",v:AN.v,rk:AN.rk,a:1}]:[]).forEach((x,i)=>{const r=t+2+(x.a?3:i);cell(r,1,x.l,{cs:2,s:x.a?9:8,h:"l"});cell(r,3,x.v==null?",,,":fmScore(x.v),{s:10,h:"r"});cell(r,4,"Rang",{s:9,h:"l"});cell(r,5,x.rk||",,,",{s:10,h:"l"})});
+  T.concat(PERS(C).indexOf(p)===PERS(C).length-1?[{l:"Moy annuelle",v:AN.v,rk:AN.rk,a:1}]:[]).forEach((x,i)=>{const r=t+2+(x.a?T.length:i);cell(r,1,x.l,{cs:2,s:x.a?9:8,h:"l"});cell(r,3,x.v==null?",,,":fmScore(x.v),{s:10,h:"r"});cell(r,4,"Rang",{s:9,h:"l"});cell(r,5,x.rk||",,,",{s:10,h:"l"})});
   box(t+2,1,t+5,5,"m");
   cell(t+2,6,"Performances de l’élève",{cs:5,s:10,i:1});["Lettres","Sciences","Autres"].forEach((n,i)=>{cell(t+3+i,6,n,{cs:2,h:"l"});cell(t+3+i,8,B.perf[i]==null?"":fmScore(B.perf[i]),{});cell(t+3+i,9,ap(B.perf[i]),{cs:2,s:10,h:"l"})});box(t+2,6,t+5,10,"m");
   cell(t+2,11,"Mention du conseil de professeurs",{rs:2,cs:2,s:9,w:1});B.ml.forEach((m,i)=>cell(t+4+i,11,m,{cs:2,s:10,i:1}));box(t+2,11,t+6,12,"m");
