@@ -329,6 +329,7 @@ function load(){try{const r=localStorage.getItem(LS);if(r)return JSON.parse(r)}c
 function save(){try{const ln=window.licName&&window.licName();if(ln&&db&&db.etab&&db.etab.nom!==ln)db.etab.nom=ln}catch(e){}try{localStorage.setItem(LS,JSON.stringify(db))}catch(e){}if(ENS&&!ensBusy)ensPush();else if(!ENS&&db&&db.sync&&db.sync.key&&DB_URL&&window.licOK&&window.licOK())autoRef();dsMark()}
 const OUTPUT_TABS=new Set(["bulletin","stats","examen","emploi","listes"]);
 function requireLicensedOutput(feature){
+  return true; /* accès libre : plus de code d’activation pour travailler */
   if(typeof ENS!=="undefined"&&ENS)return true;
   if(window.licOK&&window.licOK())return true;
   if(window.licShow)window.licShow("L’accès à « "+feature+" » est réservé aux établissements ayant activé leur licence. Vous pouvez continuer à saisir les classes, matières, professeurs, élèves et notes. Saisissez votre identifiant et votre mot de passe pour déverrouiller les fonctions de sortie.");
@@ -567,7 +568,95 @@ function bulData0(C,p){
   const rkG=rkOf(rows.filter(r=>!r.imp),"mg");rows.forEach(r=>{if(r.imp)rkG[r.id]=r.impRk});
   return{mats,rows,rkG};
 }
-function bulData(C,p){const D=bulData0(C,p),ov=reclGeneral(C,p,D.rows);for(const id in ov)D.rkG[id]=ov[id];return D}
+// Fin d'année : si la moyenne de passage est inférieure à 10 (ex. 9,5), un élève choisi par l'administration (db.bonus, avec motif) dont la moyenne annuelle atteint ce seuil est amené à 10,00.
+// Des points sont ajoutés aux notes de composition du dernier trimestre/semestre : au plus BONUS_MAX par matière, répartis le plus également possible (écart type ≤ 1).
+// Si 10,00 n'est pas atteignable dans ces limites, la moyenne de passage retenue est trop faible : aucun point n'est ajouté. Les notes saisies ne sont jamais modifiées.
+const BONUS_MAX=3;
+function bonusPlan(D,r,Oth,p){
+  const oth=Oth.map(d=>d.rows.find(y=>y.id===r.id).mg).filter(v=>v!=null),n=oth.length+1,so=oth.reduce((a,b)=>a+b,0),need=(10*n-so)-r.mg;
+  if(need<=1e-9)return{ok:true,add:{}};
+  const c=D.mats.map(m=>{const nt=getN(r.id,m.matiere,p);return{m:m.matiere,cp:nn(nt&&nt.cp),coef:+m.coef,mo:r.per[m.matiere].mo}}).filter(o=>o.mo!=null&&o.cp!=null);
+  if(!c.length)return{ok:false,why:"aucune note de composition"};
+  const Q=.25,qf=x=>Math.floor(x/Q+1e-9)*Q,capv=c.map(o=>Math.max(0,qf(Math.min(BONUS_MAX,20-o.cp)))),F=vals=>c.reduce((a,o,i)=>a+o.coef*vals[i],0)/(2*r.k),fx=x=>F(capv.map(v=>Math.min(x,v)));
+  if(fx(BONUS_MAX)<need-1e-9)return{ok:false,why:"plus de "+BONUS_MAX+" points par matière seraient nécessaires"};
+  // points ajoutés uniquement par paliers de 0,25 (0,25 ; 0,50 ; 0,75 ; 1 ; 1,25 …), jamais plus de BONUS_MAX par matière
+  let b=0;while(fx(b)<need-1e-9&&b<BONUS_MAX)b+=Q;
+  const vals=capv.map(v=>Math.min(b,v));
+  if(b>=Q){vals.map((v,k)=>k).filter(k=>vals[k]===b).sort((x,y)=>c[x].coef-c[y].coef).forEach(k=>{vals[k]=b-Q;if(F(vals)<need-1e-9)vals[k]=b})}
+  const add={};c.forEach((o,k)=>{if(vals[k]>0)add[o.m]=vals[k]});
+  const v=c.map(o=>add[o.m]||0),mu=v.reduce((a,x)=>a+x,0)/v.length,sd=Math.sqrt(v.reduce((a,x)=>a+(x-mu)*(x-mu),0)/v.length);
+  if(sd>1)return{ok:false,why:"répartition trop inégale entre les matières"};
+  return{ok:true,add};
+}
+function bulData(C,p){const D=bulData1(C,p),ov=reclGeneral(C,p,D.rows);for(const id in ov)D.rkG[id]=ov[id];return D}
+function bulData1(C,p){
+  const D=bulData0(C,p),ps=PERS(C),th=C.passage==null||String(C.passage).trim()===""?NaN:Number(String(C.passage).replace(",","."));
+  if(!ps.length||p!==ps[ps.length-1]||!Number.isFinite(th)||th>=10)return D;
+  const O=ps.slice(0,-1).map(pp=>bulData0(C,pp));
+  D.rows.forEach(r=>{
+    if(r.mg==null||!((db.bonus||{})[C.classe]||{})[r.id])return;   // seuls les élèves choisis par l'administration
+    const oth=O.map(d=>d.rows.find(y=>y.id===r.id).mg).filter(v=>v!=null),n=oth.length+1,ann=(oth.reduce((a,b)=>a+b,0)+r.mg)/n;
+    if(ann>=10||ann<th-1e-9)return;
+    const pl=bonusPlan(D,r,O,p);if(!pl.ok||!Object.keys(pl.add).length)return;
+    let s2=0,k2=0;
+    D.mats.forEach(m=>{
+      if(pl.add[m.matiere]){const nt=getN(r.id,m.matiere,p);r.per[m.matiere]=calc(Object.assign({},nt,{cp:nn(nt.cp)+pl.add[m.matiere]}),+m.coef)}
+      const q=r.per[m.matiere];if(q.mo!=null){s2+=q.mp;k2+=+m.coef}
+    });
+    r.s=s2;r.k=k2;r.mg=k2?s2/k2:null;r.bonus=pl.add;
+  });
+  D.rkG=rkOf(D.rows.filter(r=>!r.imp),"mg");D.rows.forEach(r=>{if(r.imp)D.rkG[r.id]=r.impRk});
+  return D;
+}
+// Bonification du conseil de classe : choix des élèves, motifs et relevé (trace interne, présentable en cas de contrôle)
+let bonOpen=false;
+function bonCands(C){
+  const ps=PERS(C),th=C.passage==null||String(C.passage).trim()===""?NaN:Number(String(C.passage).replace(",","."));
+  if(!ps.length||!Number.isFinite(th)||th>=10)return[];
+  const O=ps.map(pp=>bulData0(C,pp)),out=[];
+  O[O.length-1].rows.forEach(r=>{if(r.mg==null)return;const mg=O.map(d=>d.rows.find(y=>y.id===r.id).mg).filter(v=>v!=null),av=mg.reduce((a,b)=>a+b,0)/mg.length;if(av<10&&av>=th-1e-9)out.push({e:r.e,id:r.id,avant:av,plan:bonusPlan(O[O.length-1],r,O.slice(0,-1),ps[ps.length-1])})});
+  return out;
+}
+function releveData(C){
+  const ps=PERS(C);if(!ps.length)return[];const last=ps[ps.length-1],D=bulData(C,last),O=ps.map(pp=>bulData0(C,pp)),AA=annAll(C),B=(db.bonus||{})[C.classe]||{},out=[];
+  D.rows.forEach(r=>{if(!r.bonus)return;
+    const mg=O.map(d=>d.rows.find(y=>y.id===r.id).mg).filter(v=>v!=null),av=mg.length?mg.reduce((a,b)=>a+b,0)/mg.length:null,ap=AA.get(r.id);
+    out.push({e:r.e,motif:(B[r.id]||{}).motif||"",avant:av,apres:ap?ap.v:null,l:D.mats.filter(m=>r.bonus[m.matiere]).map(m=>{const sa=nn((getN(r.id,m.matiere,last)||{}).cp),a=r.bonus[m.matiere];return{m:m.matiere,s:sa,a:a,n:sa+a}})})});
+  return out;
+}
+function releveHTML(C,p){
+  const ps=PERS(C);if(!ps.length||p!==ps[ps.length-1])return"";const K=bonCands(C);if(!K.length)return"";const n=Object.keys((db.bonus||{})[C.classe]||{}).length;
+  return`<div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="rvb">Bonification du conseil de classe${n?" ("+n+" élève(s))":""}</button></div><div id="rvx" style="display:${bonOpen?"block":"none"};padding:0 14px 8px">${bonOpen?releveTable(C):""}</div>`;
+}
+function releveTable(C){
+  const K=bonCands(C),B=(db.bonus||{})[C.classe]||{},R=releveData(C);
+  const sel=`<div class="s" style="padding-bottom:6px">Élèves dont la moyenne annuelle atteint la moyenne de passage (${esc(String(C.passage))}) sans atteindre 10. Cochez ceux à qui le conseil de classe accorde une bonification et indiquez le motif : le système ajoute alors des points aux notes de composition (par paliers de 0,25 point, au plus 3 par matière, répartis de façon régulière) pour porter leur moyenne annuelle à 10 au minimum. Si 10,00 ne peut pas être atteint dans ces limites, la moyenne de passage retenue est trop faible pour l’élève et aucun point n’est ajouté.</div><div style="overflow-x:auto"><table class="st"><thead><tr><th></th><th>Élève</th><th>Moy. annuelle</th><th>Motif de la décision</th></tr></thead><tbody>${K.map(k=>`<tr><td><input type="checkbox" class="bnk" data-id="${k.id}" ${k.plan.ok?(B[k.id]?"checked":""):"disabled"}></td><td class="l">${esc(k.e.nom.toUpperCase()+" "+k.e.prenom)}</td><td>${fmScore(k.avant)}</td><td>${k.plan.ok?`<input class="bnm" data-id="${k.id}" value="${esc((B[k.id]||{}).motif||"")}" placeholder="Ex. progression en cours d’année" style="min-width:200px">`:`<span style="color:#b00020">Moyenne de passage retenue trop faible pour cet élève : ${esc(k.plan.why)}.</span>`}</td></tr>`).join("")}</tbody></table></div><div class="nav2" style="padding:8px 0 4px"><button class="btnline" id="rvs">Enregistrer la décision</button></div><div class="s" id="rvm" role="status"></div>`;
+  const rel=R.length?`<div class="s" style="padding:10px 0 6px"><b>Relevé des points ajoutés</b> (trace interne : les notes saisies par les professeurs ne sont pas modifiées)</div><div style="overflow-x:auto"><table class="st"><thead><tr><th>Élève</th><th>Matière</th><th>Note saisie</th><th>Points ajoutés</th><th>Note retenue</th><th>Total points</th><th>Moy. annuelle avant</th><th>après</th><th>Motif</th></tr></thead><tbody>${R.map(o=>o.l.map((x,i)=>`<tr><td class="l">${i?"":esc(o.e.nom.toUpperCase()+" "+o.e.prenom)}</td><td class="l">${esc(x.m)}</td><td>${fmScore(x.s)}</td><td>+${fmScore(x.a)}</td><td>${fmScore(x.n)}</td><td><b>${i?"":"+"+fmScore(o.l.reduce((a,y)=>a+y.a,0))}</b></td><td>${i?"":fmScore(o.avant)}</td><td>${i?"":fmScore(o.apres)}</td><td class="l">${i?"":esc(o.motif)}</td></tr>`).join("")).join("")}</tbody></table></div><div class="s" style="padding:6px 0"><b>Total général : ${R.reduce((a,o)=>a+o.l.reduce((b,y)=>b+y.a,0),0).toFixed(2).replace(".",",")} point(s) de bonification pour ${R.length} élève(s)</b></div><div class="nav2" style="padding:8px 0 0"><button class="btnline" id="rvp">PDF du relevé</button></div>`:"";
+  return sel+rel;
+}
+function bindBonus(C){
+  const b=$("#rvb");if(!b)return;const x=$("#rvx");
+  const wire=()=>{
+    $("#rvs").onclick=()=>{const o={};let bad=false;x.querySelectorAll(".bnk").forEach(c=>{if(!c.checked||c.disabled)return;const m=(x.querySelector('.bnm[data-id="'+c.dataset.id+'"]').value||"").trim();if(!m)bad=true;o[c.dataset.id]={motif:m}});
+      if(bad){$("#rvm").textContent="Indiquez le motif de la décision pour chaque élève coché.";return}
+      db.bonus=db.bonus||{};if(Object.keys(o).length)db.bonus[C.classe]=o;else delete db.bonus[C.classe];save();bonOpen=true;renderBulletin()};
+    if($("#rvp"))$("#rvp").onclick=()=>saveDoc(relevePDF(C),"Releve-bonifications-"+C.classe+".pdf",t=>{const m=$("#bmsg");if(m)m.textContent=t});
+  };
+  b.onclick=()=>{bonOpen=!bonOpen;x.style.display=bonOpen?"block":"none";if(bonOpen){x.innerHTML=releveTable(C);wire()}};
+  if(bonOpen)wire();
+}
+function relevePDF(C){
+  const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;
+  const doc=new J({unit:"mm",format:"a4"}),E=db.etab,R=releveData(C),body=[];
+  R.forEach(o=>o.l.forEach((x,i)=>body.push([i?"":o.e.nom.toUpperCase()+" "+o.e.prenom,x.m,fmScore(x.s),"+"+fmScore(x.a),fmScore(x.n),i?"":"+"+fmScore(o.l.reduce((a,y)=>a+y.a,0)),i?"":fmScore(o.avant),i?"":fmScore(o.apres),i?"":o.motif])));
+  doc.setFont("times","bold").setFontSize(12).text([E.nom||"","Relevé des bonifications du conseil de classe — Classe : "+C.classe+" — Année scolaire "+anneeSco()],105,14,{align:"center"});
+  doc.setFont("times","normal").setFontSize(8).text(doc.splitTextToSize("Bonification accordée par le conseil de classe aux élèves dont la moyenne annuelle atteint la moyenne de passage ("+C.passage+") : des points (au plus 3 par matière, répartis de façon régulière) sont ajoutés aux notes de composition du dernier trimestre ou semestre pour porter la moyenne annuelle à 10,00. Les notes saisies par les professeurs n’ont pas été modifiées.",190),10,26);
+  doc.autoTable({startY:42,head:[["Élève","Matière","Note saisie","Points ajoutés","Note retenue","Total points","Moy. annuelle avant","Moy. annuelle après","Motif"]],body,theme:"grid",margin:{left:10,right:10},styles:{font:"times",fontSize:8,cellPadding:1.2,lineColor:0,lineWidth:.2,textColor:0,halign:"center",valign:"middle"},headStyles:{fillColor:255,textColor:0,fontStyle:"bold"},columnStyles:{0:{halign:"left",cellWidth:34},1:{halign:"left",cellWidth:24},8:{halign:"left",cellWidth:32}}});
+  const tt=R.reduce((a,o)=>a+o.l.reduce((b,y)=>b+y.a,0),0);doc.setFont("times","bold").setFontSize(9).text("Total général : "+tt.toFixed(2).replace(".",",")+" point(s) de bonification pour "+R.length+" élève(s)",10,doc.lastAutoTable.finalY+7);
+  const y=doc.lastAutoTable.finalY+22;doc.setFont("times","normal").setFontSize(9);
+  doc.text((E.lieu||"")+", le "+(fdate(E.dateConseil)||new Date().toLocaleDateString("fr-FR")),10,y);doc.text("Le Directeur",190,y,{align:"right"});doc.text(E.directeur||"",190,y+16,{align:"right"});
+  return doc;
+}
 const pname=p=>p.replace(/^1er/,"Premier").replace(/^2e/,"Deuxième").replace(/^3e/,"Troisième");
 const ETAB=[["ministere","Ministère (2 lignes : touche Entrée pour passer à la ligne)"],["pays","Pays"],["devise","Devise"],["direction","Direction régionale (2 lignes)"],["inspection","Inspection (2 lignes)"],["nom","Établissement"],["numero","N° de l’établissement"],["tel","Téléphone"],["lieu","Lieu"],["directeur","Nom du directeur / proviseur"],["dateConseil","Date du conseil de classe"]];
 function etabDef(){const d=new Date(),y=d.getFullYear(),a=d.getMonth()>=8?y+" - "+(y+1):(y-1)+" - "+y;return{ministere:"Ministère de l’éducation\nnationale",pays:"République togolaise",devise:"Travail - Liberté - Patrie",direction:"",inspection:"",nom:"",numero:"",tel:"",annee:a,lieu:"",directeur:""}}
@@ -576,7 +665,7 @@ function bulModel(C,p,D,k){
   D.mats.forEach(m=>{mrk[m.matiere]=rkOf(D.rows.map(x=>({id:x.id,mo:x.per[m.matiere].mo})),"mo");const ov=reclSubj(C,p,D.rows,m.matiere);for(const id in ov)mrk[m.matiere][id]=ov[id]});
   let tc=0,ts=0;
   const lines=D.mats.map(m=>{const x=r.per[m.matiere],n=getN(r.id,m.matiere,p)||{},pr=db.profs.find(q=>q.ens.includes(m.matiere+"|"+C.classe));if(x.mo!=null){tc+=+m.coef;ts+=x.mp}
-    return[m.matiere,[n.i1,n.i2,n.dv].filter(v=>v!==""&&v!=null).map(v=>fmScore(nn(v))).join(" · ")||"—",fmScore(x.mc),fmScore(nn(n.cp)),String(m.coef),fmScore(x.mp),x.mo!=null?mrk[m.matiere][r.id]+"/"+eff:"—",appr(x.mo),pr?profShort(pr):""]});
+    return[m.matiere,[n.i1,n.i2,n.dv].filter(v=>v!==""&&v!=null).map(v=>fmScore(nn(v))).join(" · ")||"—",fmScore(x.mc),fmScore(nn(n.cp)!=null?nn(n.cp)+((r.bonus||{})[m.matiere]||0):null),String(m.coef),fmScore(x.mp),x.mo!=null?mrk[m.matiere][r.id]+"/"+eff:"—",appr(x.mo),pr?profShort(pr):""]});
   const mgs=D.rows.map(x=>x.mg).filter(x=>x!=null),av=mgs.length?mgs.reduce((a,b)=>a+b,0)/mgs.length:null;
   const others=ps.slice(0,ps.indexOf(p)+1).map(pp=>{const d=bulData(C,pp),x=d.rows.find(y=>y.id===r.id);return["Moyenne, "+pp,fmScore(x.mg),x.mg!=null?(x.imp?String(d.rkG[r.id]):d.rkG[r.id]+"/"+eff):"—"]});
   const tit=db.profs.find(q=>q.titulaire===C.classe);
@@ -1275,42 +1364,55 @@ function reclSim(C,p,id,vals){
   return res;
 }
 function reclOpen(){
-  const C=db.classes.find(c=>c.classe===bst.c);if(!C||!bst.p){alert("Choisissez d’abord la classe et la période.");return}
-  const p=bst.p,key=reclKey(C,p),D0=bulData(C,p);
-  if(!D0.rows.length){alert("Aucun élève dans cette classe.");return}
-  const cands=D0.rows.filter(r=>!r.imp),d=document.createElement("dialog");
-  d.style.cssText="width:min(96vw,560px);max-height:92vh;overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:16px";
-  const cur0=D0.rows[Math.max(0,Math.min(bst.i,D0.rows.length-1))];
-  d.innerHTML=`<b style="font-size:17px">Réclamation de notes</b><div class="s" style="margin:4px 0 10px">${esc(C.classe)} · ${esc(p)}. Corrigez les notes de l’élève : seul son rang est recalculé (comparé aux moyennes des autres élèves). Les rangs de tous les autres élèves restent figés, comme sur les bulletins déjà remis.</div>
-  <label>Élève</label><select id="rc_e" style="width:100%">${cands.map(r=>`<option value="${r.id}" ${r.id===cur0.id?"selected":""}>${esc(r.e.nom.toUpperCase()+" "+r.e.prenom)}</option>`).join("")}</select>
-  <div id="rc_n"></div>
-  <label style="margin-top:10px">Motif de la réclamation</label><input id="rc_m" style="width:100%;box-sizing:border-box" placeholder="Ex. note de devoir mal reportée">
-  <div class="s" id="rc_p" role="status" style="margin:10px 0;min-height:20px"></div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btnline" id="rc_c">Calculer</button><button type="button" class="btnline" id="rc_a">Appliquer la réclamation</button><button type="button" class="btnline" id="rc_x">Fermer</button></div>
+  if(!db.classes.length||!db.eleves.length){alert("Aucune classe ou aucun élève enregistré.");return}
+  const F=[["i1","Interrogation 1"],["i2","Interrogation 2"],["dv","Devoir"],["cp","Composition"]];
+  const d=document.createElement("dialog");
+  d.style.cssText="width:min(96vw,460px);max-height:92vh;overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:16px";
+  const sl="width:100%;box-sizing:border-box;margin-bottom:8px";
+  d.innerHTML=`<b style="font-size:17px">Réclamation de notes</b><div class="s" style="margin:4px 0 10px">Seul le rang de l’élève concerné est recalculé ; les rangs des autres élèves restent figés.</div>
+  <label>Classe</label><select id="rc_c" style="${sl}"></select>
+  <label>Période</label><select id="rc_p" style="${sl}"></select>
+  <label>Élève</label><select id="rc_e" style="${sl}"></select>
+  <label>Matière</label><select id="rc_m" style="${sl}"></select>
+  <label>Note à corriger</label><select id="rc_k" style="${sl}"></select>
+  <label>Nouvelle note (sur 20)</label><input id="rc_v" inputmode="decimal" style="${sl}" placeholder="Ex. 12,5">
+  <label>Motif</label><input id="rc_r" style="${sl}" placeholder="Ex. note mal reportée">
+  <div class="s" id="rc_s" role="status" style="margin:6px 0 10px;min-height:20px"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btnline" id="rc_a">Valider la correction</button><button type="button" class="btnline" id="rc_x">Fermer</button></div>
   <div id="rc_l"></div>`;
   document.body.appendChild(d);
-  const q=s=>d.querySelector(s),msg=t=>{q("#rc_p").textContent=t},idSel=()=>+q("#rc_e").value;
-  const drawN=()=>{const id=idSel();q("#rc_n").innerHTML=D0.mats.map(m=>{const n=getN(id,m.matiere,p)||{};return`<div class="s" style="margin-top:8px"><b>${esc(m.matiere)}</b></div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">${[["i1","Int. 1"],["i2","Int. 2"],["dv","Devoir"],["cp","Compo"]].map(([k,l])=>`<input data-m="${esc(m.matiere)}" data-k="${k}" inputmode="decimal" placeholder="${l}" value="${esc(n[k]??"")}" style="min-width:0;box-sizing:border-box">`).join("")}</div>`}).join("");msg("")};
-  const drawL=()=>{const R=(db.recl||{})[key],cl=R?R.cl:{},ids=Object.keys(cl);
-    q("#rc_l").innerHTML=ids.length?`<div class="s" style="margin-top:12px"><b>Réclamations enregistrées</b></div>`+ids.map(id=>{const e=db.eleves.find(x=>x.id===+id),h=cl[id].hist[cl[id].hist.length-1];return`<div class="s">${esc(e?e.nom.toUpperCase()+" "+e.prenom:"Élève")} · ${fm(h.avant.mg)} (${h.avant.rk!=null?ord(h.avant.rk):"—"}) → ${fm(h.apres.mg)} (${h.apres.rk!=null?ord(h.apres.rk):"—"}) · ${esc(h.date.split("-").reverse().join("/"))} · ${esc(h.motif)}</div>`}).join(""):""};
-  const collect=()=>{const vals={};let bad="";d.querySelectorAll("#rc_n input").forEach(i=>{const m=i.dataset.m,k=i.dataset.k,v=i.value.trim().replace(",",".");if(v!==""&&!(isFinite(+v)&&+v>=0&&+v<=20))bad="Les notes doivent être entre 0 et 20 (« "+m+" »).";(vals[m]=vals[m]||{})[k]=v});return{vals,bad}};
-  const changed=(id,vals)=>{const o={};Object.keys(vals).forEach(m=>{const n=getN(id,m,p)||{},v=vals[m];if(["i1","i2","dv","cp"].some(k=>String(n[k]??"").trim().replace(",",".")!==v))o[m]=v});return o};
-  const rk=(D,id)=>{const r=D.rows.find(x=>x.id===id);if(!r||r.mg==null)return null;let n=1;D.rows.forEach(o=>{if(o.id!==id&&o.mg!=null&&Math.round(o.mg*100)>Math.round(r.mg*100))n++});return n};
-  q("#rc_e").onchange=drawN;q("#rc_x").onclick=()=>{d.close();d.remove()};d.addEventListener("cancel",()=>d.remove());
-  q("#rc_c").onclick=()=>{const id=idSel(),{vals,bad}=collect();if(bad)return msg(bad);const ch=changed(id,vals);if(!Object.keys(ch).length)return msg("Aucune note modifiée.");
-    const old=bulData(C,p),oldR=old.rows.find(r=>r.id===id),sim=reclSim(C,p,id,ch),nr=sim.rows.find(r=>r.id===id);
-    msg("Moyenne : "+fm(oldR.mg)+" (rang "+(old.rkG[id]!=null?ord(old.rkG[id]):"—")+") → "+fm(nr.mg)+" (nouveau rang "+(rk(sim,id)!=null?ord(rk(sim,id)):"—")+" sur "+sim.rows.length+"). Les autres rangs ne changent pas.")};
-  q("#rc_a").onclick=()=>{const id=idSel(),{vals,bad}=collect();if(bad)return msg(bad);const ch=changed(id,vals);if(!Object.keys(ch).length)return msg("Aucune note modifiée.");
-    const motif=q("#rc_m").value.trim();if(!motif)return msg("Indiquez le motif de la réclamation.");
-    if(!(db.recl&&db.recl[key]))reclSnap(C,p);
-    const R=db.recl[key],old=bulData(C,p),oldR=old.rows.find(r=>r.id===id),avant={mg:oldR.mg,rk:old.rkG[id]},nl=[];
-    Object.keys(ch).forEach(m=>{let n=getN(id,m,p);if(!n){n={e:id,m,p,i1:"",i2:"",dv:"",cp:""};db.notes.push(n)}nl.push({m,avant:{i1:n.i1,i2:n.i2,dv:n.dv,cp:n.cp},apres:ch[m]});Object.assign(n,ch[m])});
+  const q=s=>d.querySelector(s),msg=t=>{q("#rc_s").textContent=t},opt=(v,t,sel)=>`<option value="${esc(v)}" ${sel?"selected":""}>${esc(t)}</option>`;
+  const getC=()=>db.classes.find(c=>c.classe===q("#rc_c").value);
+  q("#rc_c").innerHTML=db.classes.map(c=>opt(c.classe,c.classe,c.classe===(bst.c||db.classes[0].classe))).join("");
+  const drawP=()=>{const C=getC();q("#rc_p").innerHTML=PERS(C).map(p=>opt(p,p,p===bst.p)).join("");drawE();drawM()};
+  const drawE=()=>{const C=getC();q("#rc_e").innerHTML=db.eleves.filter(e=>e.classe===C.classe).sort(ENT.eleves.sort).map(e=>opt(e.id,e.nom.toUpperCase()+" "+e.prenom)).join("")||opt("","Aucun élève")};
+  const drawM=()=>{const C=getC();q("#rc_m").innerHTML=db.matieres.filter(m=>m.niveau===C.niveau).map(m=>opt(m.matiere,m.matiere)).join("")||opt("","Aucune matière");drawK()};
+  const drawK=()=>{const C=getC(),id=+q("#rc_e").value,n=getN(id,q("#rc_m").value,q("#rc_p").value)||{},cur=q("#rc_k").value;
+    q("#rc_k").innerHTML=F.map(([k,l])=>opt(k,l+" (actuelle : "+(String(n[k]??"").trim()===""?"aucune":fm(nn(n[k])))+")",k===cur)).join("");q("#rc_v").value="";msg("")};
+  const drawL=()=>{const C=getC(),R=(db.recl||{})[reclKey(C,q("#rc_p").value)],cl=R?R.cl:{},ids=Object.keys(cl);
+    q("#rc_l").innerHTML=ids.length?`<div class="s" style="margin-top:12px"><b>Réclamations de cette période</b></div>`+ids.map(id=>{const e=db.eleves.find(x=>x.id===+id),h=cl[id].hist[cl[id].hist.length-1];return`<div class="s">${esc(e?e.nom.toUpperCase()+" "+e.prenom:"Élève")} · ${fm(h.avant.mg)} (${h.avant.rk!=null?ord(h.avant.rk):"—"}) → ${fm(h.apres.mg)} (${h.apres.rk!=null?ord(h.apres.rk):"—"}) · ${esc(h.date.split("-").reverse().join("/"))} · ${esc(h.motif)}</div>`}).join(""):""};
+  q("#rc_c").onchange=()=>{drawP();drawL()};q("#rc_p").onchange=()=>{drawE();drawK();drawL()};q("#rc_e").onchange=drawK;q("#rc_m").onchange=drawK;
+  q("#rc_x").onclick=()=>{d.close();d.remove()};d.addEventListener("cancel",()=>d.remove());
+  q("#rc_a").onclick=()=>{
+    const C=getC(),p=q("#rc_p").value,id=+q("#rc_e").value,m=q("#rc_m").value,k=q("#rc_k").value,v=q("#rc_v").value.trim().replace(",","."),motif=q("#rc_r").value.trim();
+    if(!C||!p||!id||!m)return msg("Choisissez la classe, la période, l’élève et la matière.");
+    if(v===""||!isFinite(+v)||+v<0||+v>20)return msg("Saisissez la nouvelle note, entre 0 et 20.");
+    if(!motif)return msg("Indiquez le motif de la réclamation.");
+    const eleve=db.eleves.find(e=>e.id===id);
+    if(eleve&&(eleve.transfert||{})[p])return msg("Cette période vient de l’ancien établissement de l’élève : pas de note à corriger ici.");
+    const n0=getN(id,m,p),old=n0?String(n0[k]??"").trim().replace(",","."):"";
+    if(old!==""&&+old===+v)return msg("La nouvelle note est identique à l’ancienne.");
+    if(!(db.recl&&db.recl[reclKey(C,p)]))reclSnap(C,p);
+    const R=db.recl[reclKey(C,p)],D1=bulData(C,p),r1=D1.rows.find(r=>r.id===id),avant={mg:r1?r1.mg:null,rk:D1.rkG[id]};
+    let n=getN(id,m,p);if(!n){n={e:id,m,p,i1:"",i2:"",dv:"",cp:""};db.notes.push(n)}
+    n[k]=v;
     R.cl[id]=R.cl[id]||{hist:[]};
-    const nw=bulData(C,p),nr=nw.rows.find(r=>r.id===id);
-    R.cl[id].hist.push({date:new Date().toISOString().slice(0,10),motif,avant,apres:{mg:nr.mg,rk:nw.rkG[id]},notes:nl});
-    save();render();drawN();drawL();q("#rc_m").value="";
-    msg("Réclamation enregistrée : moyenne "+fm(avant.mg)+" → "+fm(nr.mg)+", rang "+(avant.rk!=null?ord(avant.rk):"—")+" → "+(nw.rkG[id]!=null?ord(nw.rkG[id]):"—")+". Les rangs des autres élèves sont inchangés.")};
-  drawN();drawL();d.showModal();
+    const D2=bulData(C,p),r2=D2.rows.find(r=>r.id===id);
+    R.cl[id].hist.push({date:new Date().toISOString().slice(0,10),motif,avant,apres:{mg:r2?r2.mg:null,rk:D2.rkG[id]},notes:[{m,avant:{[k]:old},apres:{[k]:v}}]});
+    save();render();drawK();drawL();q("#rc_r").value="";
+    msg("Note corrigée ("+m+", "+F.find(f=>f[0]===k)[1]+") : "+(old===""?"aucune":fm(+old))+" → "+fm(+v)+". Moyenne "+fm(avant.mg)+" → "+fm(r2?r2.mg:null)+", rang "+(avant.rk!=null?ord(avant.rk):"—")+" → "+(D2.rkG[id]!=null?ord(D2.rkG[id]):"—")+". Les autres rangs sont inchangés.");
+  };
+  drawP();drawL();d.showModal();
 }
 function annAll(C){
   const ps=PERS(C),Ds=ps.map(pp=>bulData(C,pp)),L=[];
@@ -1429,11 +1531,12 @@ function renderBulletin(){
     lst.onclick=ev=>{const b=ev.target.closest("button[data-id]");if(!b)return;const e=db.eleves.find(x=>x.id===+b.dataset.id);if(e)go(e)};
   }
   const B=bulM2(C,bst.p,D,bst.i),M=B.M,d=new Date().toLocaleDateString("fr-FR"),dc=fdate(E.dateConseil)||d,R=bulRender(bulSpec(B,C,bst.p,E,annAll(C),dc,d));
-  L.innerHTML=`<li class="bul">${abandonNoticeHTML(C,bst.p)}<div style="overflow:auto"><div id="bkw" style="width:${R.wpx}px;height:${R.hpx}px">${R.html}</div></div><div class="nav2" style="padding:8px 14px 4px"><button class="btnline" id="bpv" ${bst.i===0?"disabled":""}>Précédent</button><button class="btnline" id="bnx" ${bst.i===M.eff-1?"disabled":""}>Élève suivant</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bp1">PDF de cet élève</button><button class="btnline" id="bp2">PDF de la classe</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bpr1">Imprimer cet élève</button><button class="btnline" id="bpr2">Imprimer la classe</button></div><div class="s" id="bmsg" role="status" style="padding:0 16px 14px"></div></li>`;
+  L.innerHTML=`<li class="bul">${abandonNoticeHTML(C,bst.p)}<div style="overflow:auto"><div id="bkw" style="width:${R.wpx}px;height:${R.hpx}px">${R.html}</div></div><div class="nav2" style="padding:8px 14px 4px"><button class="btnline" id="bpv" ${bst.i===0?"disabled":""}>Précédent</button><button class="btnline" id="bnx" ${bst.i===M.eff-1?"disabled":""}>Élève suivant</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bp1">PDF de cet élève</button><button class="btnline" id="bp2">PDF de la classe</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bpr1">Imprimer cet élève</button><button class="btnline" id="bpr2">Imprimer la classe</button></div>${releveHTML(C,bst.p)}<div class="s" id="bmsg" role="status" style="padding:0 16px 14px"></div></li>`;
   const w=$("#bkw"),av=w.parentElement.clientWidth||360,s=Math.max(.8,Math.min(1.25,(av-4)/R.wpx));w.style.width=(R.wpx*s)+"px";w.style.height=(R.hpx*s)+"px";w.firstChild.style.transform=`scale(${s})`;
   if($("#abx"))$("#abx").onclick=async()=>{const l=abandonList(C)||[];if(!await confirmUI("Archiver "+l.length+" élève(s) sans notes comme abandons ?","Archiver"))return;l.forEach(e=>archivePush(e,"Abandon"));save();bst.i=0;render()};
   $("#bpv").onclick=()=>{bst.i--;renderBulletin()};$("#bnx").onclick=()=>{bst.i++;renderBulletin()};
   $("#bp1").onclick=()=>dlPDF(C,false);$("#bp2").onclick=()=>dlPDF(C,true);$("#bpr1").onclick=()=>printBulletins(C,false);$("#bpr2").onclick=()=>printBulletins(C,true);
+  bindBonus(C);
 }
 
 function printBulletins(C,all){
@@ -1790,13 +1893,13 @@ prepLogo();
   async function pbk(pw,salt,bits){const k=await crypto.subtle.importKey("raw",new TextEncoder().encode(pw),"PBKDF2",false,["deriveBits"]);return hex(await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(salt),iterations:100000},k,bits))}
   const lic=id=>fetch(DB_URL+"/licences/"+encodeURIComponent(id)+".json");
   let bar=null,ov=null,asked=false;
-  function drawBar(){if(bar){bar.remove();bar=null}if(ok())return;bar=document.createElement("div");bar.id="lic_bar";bar.innerHTML='<span>Mode découverte : saisie autorisée, sorties et fonctions à distance verrouillées. Les données sont conservées sur cet appareil.</span><button type="button">Activer mon accès</button>';document.body.insertBefore(bar,document.body.firstChild);bar.querySelector("button").onclick=()=>show()}
+  function drawBar(){if(bar){bar.remove();bar=null}}
   function close(){if(ov){ov.remove();ov=null}document.body.classList.remove("locked")}
   function show(msg){
     close();document.body.classList.add("locked");ov=document.createElement("div");ov.id="lock";
     ov.innerHTML=`<div class="lbox"><h2 style="margin:0 0 6px">Activer votre accès</h2><div class="s" style="margin-bottom:10px">${msg||"Pour enregistrer vos données, saisissez l’identifiant et le mot de passe remis par votre fournisseur ScolaNova. Sans activation, vous pouvez saisir les classes, matières, professeurs, élèves et notes. Les bulletins, statistiques, emplois du temps, documents PDF et fonctions à distance restent verrouillés."}</div>
     <label>Identifiant</label><input id="lc_u" autocapitalize="off" autocomplete="off"><label>Mot de passe</label><input id="lc_p" autocapitalize="characters" autocomplete="off">
-    <a href="https://wa.me/22890535045?text=Bonjour%2C%20je%20souhaite%20obtenir%20mon%20identifiant%20et%20mon%20mot%20de%20passe%20d%E2%80%99activation%20de%20ScolaNova." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:9px;margin:12px 0;padding:11px;border-radius:9px;background:#25D366;color:#fff;text-decoration:none;font-weight:700"><svg width="23" height="23" viewBox="0 0 32 32" aria-hidden="true" style="fill:currentColor"><path d="M16 .8A15 15 0 0 0 3.1 23.5L1 31l7.7-2A15.1 15.1 0 1 0 16 .8zm0 27.4a12.3 12.3 0 0 1-6.3-1.7l-.5-.3-4.6 1.2 1.2-4.5-.3-.5A12.4 12.4 0 1 1 16 28.2zm6.8-9.2c-.4-.2-2.1-1-2.5-1.1-.3-.1-.6-.2-.8.2-.3.4-.9 1.1-1.1 1.3-.2.3-.4.3-.8.1-.4-.2-1.5-.6-2.9-1.8-1.1-1-1.8-2.1-2-2.5-.2-.4 0-.6.2-.8l.6-.7c.2-.2.3-.4.4-.6.1-.2 0-.5 0-.7-.1-.2-.8-1.9-1.1-2.6-.3-.7-.6-.6-.8-.6h-.7c-.2 0-.7.1-1 .5-.4.4-1.3 1.3-1.3 3.1s1.3 3.6 1.5 3.8c.2.3 2.6 4 6.2 5.5.9.4 1.6.6 2.1.7.9.3 1.7.2 2.3.1.7-.1 2.1-.9 2.4-1.8.3-.9.3-1.7.2-1.8-.1-.2-.3-.3-.7-.5z"/></svg>Nous contacter sur WhatsApp</a>
+
     <div class="err" id="lc_e" role="alert"></div><div class="btns"><button type="button" id="lc_x">Plus tard</button><button type="button" class="ok" id="lc_ok">Activer</button></div></div>`;
     document.body.appendChild(ov);const q=s=>ov.querySelector(s),e=m=>{q("#lc_e").textContent=m};
     q("#lc_x").onclick=close;
