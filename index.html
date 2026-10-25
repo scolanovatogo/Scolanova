@@ -1331,6 +1331,21 @@ function renderBulletin(){
   const D=bulData(C,bst.p);
   if(!D.rows.length){L.innerHTML=`<li class="hint" style="padding-left:16px">Aucun élève dans cette classe.</li>`;return}
   bst.i=Math.max(0,Math.min(bst.i,D.rows.length-1));
+  {
+    const T=$("#tools");T.insertAdjacentHTML("beforeend",`<div style="flex-basis:100%;width:100%;margin-top:8px"><input id="bgo" type="search" placeholder="Aller à un élève : matricule ou nom" autocomplete="off" aria-label="Aller à un élève" style="width:100%;box-sizing:border-box"><div id="bgl" style="display:none;margin-top:4px"></div></div>`);
+    const inp=$("#bgo"),lst=$("#bgl"),norm=x=>String(x||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+    const find=q=>{q=norm(q);if(!q)return[];const dg=/^\d+$/.test(q),num=dg?String(+q):"";
+      const sc=e=>{const m=String(matriculeNumber(e.matricule)??"");if(dg){if(m===num)return 0;if(m&&m.startsWith(num))return 1}const f=norm(e.nom+" "+e.prenom),g=norm(e.prenom+" "+e.nom);return f.includes(q)||g.includes(q)?2:-1};
+      return db.eleves.map(e=>({e,v:sc(e)})).filter(x=>x.v>=0).sort((x,y)=>x.v-y.v||x.e.nom.localeCompare(y.e.nom)).slice(0,8).map(x=>x.e)};
+    const go=e=>{
+      let c=C;if(e.classe!==C.classe){c=db.classes.find(k=>k.classe===e.classe);if(!c)return;bst.c=c.classe;const ps2=PERS(c);if(!ps2.includes(bst.p))bst.p=ps2[0]}
+      const k=bulData(c,bst.p).rows.findIndex(r=>r.id===e.id);bst.i=k<0?0:k;render()};
+    const draw=()=>{const r=find(inp.value);lst.style.display=r.length||inp.value.trim()?"block":"none";
+      lst.innerHTML=r.length?r.map(e=>`<button type="button" class="btnline" data-id="${e.id}" style="display:block;width:100%;text-align:left;margin:2px 0">${esc(matriculeAffiche(e.matricule)||"—")} · ${esc(e.nom.toUpperCase()+" "+e.prenom)} · ${esc(e.classe)}</button>`).join(""):`<div class="s">Aucun élève trouvé.</div>`};
+    inp.oninput=draw;
+    inp.onkeydown=ev=>{if(ev.key==="Enter"){ev.preventDefault();const r=find(inp.value);if(r.length)go(r[0])}};
+    lst.onclick=ev=>{const b=ev.target.closest("button[data-id]");if(!b)return;const e=db.eleves.find(x=>x.id===+b.dataset.id);if(e)go(e)};
+  }
   const B=bulM2(C,bst.p,D,bst.i),M=B.M,d=new Date().toLocaleDateString("fr-FR"),dc=fdate(E.dateConseil)||d,R=bulRender(bulSpec(B,C,bst.p,E,annAll(C),dc,d));
   L.innerHTML=`<li class="bul">${abandonNoticeHTML(C,bst.p)}<div style="overflow:auto"><div id="bkw" style="width:${R.wpx}px;height:${R.hpx}px">${R.html}</div></div><div class="nav2" style="padding:8px 14px 4px"><button class="btnline" id="bpv" ${bst.i===0?"disabled":""}>Précédent</button><button class="btnline" id="bnx" ${bst.i===M.eff-1?"disabled":""}>Élève suivant</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bp1">PDF de cet élève</button><button class="btnline" id="bp2">PDF de la classe</button></div><div class="nav2" style="padding:4px 14px 6px"><button class="btnline" id="bpr1">Imprimer cet élève</button><button class="btnline" id="bpr2">Imprimer la classe</button></div><div class="s" id="bmsg" role="status" style="padding:0 16px 14px"></div></li>`;
   const w=$("#bkw"),av=w.parentElement.clientWidth||360,s=Math.max(.8,Math.min(1.25,(av-4)/R.wpx));w.style.width=(R.wpx*s)+"px";w.style.height=(R.hpx*s)+"px";w.firstChild.style.transform=`scale(${s})`;
