@@ -330,7 +330,13 @@ function save(){try{const ln=window.licName&&window.licName();if(ln&&db&&db.etab
 const OUTPUT_TABS=new Set(["bulletin","stats","examen","emploi","listes"]);
 function requireLicensedOutput(feature){
   if(typeof ENS!=="undefined"&&ENS)return true;
-  if(window.licOK&&window.licOK())return true;
+  if(window.licOK&&window.licOK()){
+    if(window.licTrial&&window.licTrial()&&feature==="les statistiques"){
+      if(window.licNotice)window.licNotice("Les statistiques ne sont pas disponibles pendant l’essai gratuit d’un mois. Activez une licence ScolaNova pour les consulter.");
+      return false;
+    }
+    return true;
+  }
   if(window.licShow)window.licShow("L’accès à « "+feature+" » est réservé aux établissements ayant activé leur licence. Vous pouvez continuer à saisir les classes, matières, professeurs, élèves et notes. Saisissez votre identifiant et votre mot de passe pour déverrouiller les fonctions de sortie.");
   return false;
 }
@@ -1033,6 +1039,12 @@ async function edtRun(msg,limit){
 const edst={v:"p",rv:"c",c:"",p:"",d:1};
 function renderEmploi(){
   const L=$("#list");L.classList.add("plain");$("#tools").innerHTML="";const ed=db.edt,on="background:var(--accent);color:var(--on-accent)",cs=clSort(db.classes),res=ed.res;
+  if(window.licTrial&&window.licTrial()&&edst.v==="r"){
+    L.innerHTML=`<li class="bul" style="padding:16px"><b>Emploi du temps généré</b><div class="s" style="padding-top:8px">La génération a été exécutée, mais l’affichage des emplois du temps est réservé à une licence activée. Les résultats restent masqués pendant l’essai gratuit.</div><div class="btns" style="margin-top:12px"><button type="button" class="ok" id="etrialback">Retour aux paramètres</button><button type="button" class="btnline" id="etriallic">Activer une licence</button></div></li>`;
+    $("#etrialback").onclick=()=>{edst.v="p";renderEmploi()};
+    $("#etriallic").onclick=()=>{if(window.licShow)window.licShow("Saisissez votre identifiant et votre mot de passe pour activer la licence et afficher les emplois du temps.")};
+    return;
+  }
   const chip=(k,t)=>`<button class="btnline" data-v="${k}" style="flex:1 1 30%;${edst.v===k?on:""}">${t}</button>`;
   let body="";
   if(!cs.length||!db.profs.length){L.innerHTML=`<li class="bul" style="padding:14px 16px"><div class="s">Créez d’abord des classes, des matières (avec les heures par semaine) et des professeurs.</div></li>`;return}
@@ -1059,6 +1071,7 @@ function renderEmploi(){
   if($("#epdf"))$("#epdf").onclick=()=>saveDoc(edtPDF(edst.rv==="p"?"p":edst.rv==="g"?"g":"c"),"Emplois-du-temps-"+({c:"classes",p:"profs",g:"general",n:"classes"}[edst.rv])+".pdf",t=>{$("#emsg").textContent=t});
 }
 function edtPDF(kind){
+  if(window.licTrial&&window.licTrial())return null;
   const J=window.jspdf&&window.jspdf.jsPDF,res=db.edt.res;if(!J||!res)return null;
   const doc=new J({unit:"mm",format:"a4",orientation:kind==="g"?"l":"p"}),E=db.etab,W=doc.internal.pageSize.getWidth(),PH=doc.internal.pageSize.getHeight(),H=[1,2,3,4,5,6,7];
   const st={font:"times",fontStyle:"bold",fontSize:10,cellPadding:2.4,lineColor:0,lineWidth:.25,textColor:0,halign:"center",valign:"middle",fillColor:255};
@@ -1122,6 +1135,10 @@ function statRows(S){
   return[two("Effectif",x=>x.eff),two("Composants",x=>x.comp),two("Absents",x=>x.abs),...S.B.map((b,i)=>two(b[2],x=>x.b[i])),one("Forte note",c=>c.mx==null?"":c.mx),one("Faible note",c=>c.mn==null?"":c.mn),one("Moyenne note",c=>fm(c.av))];
 }
 function renderStats(){
+  if(window.licTrial&&window.licTrial()){
+    const L=$("#list");L.classList.add("plain");$("#tools").innerHTML="";
+    L.innerHTML='<li class="bul" style="padding:16px"><b>Statistiques indisponibles pendant l’essai gratuit</b><div class="s" style="padding-top:8px">Les statistiques et leur export PDF nécessitent une licence activée.</div></li>';return;
+  }
   const C=db.classes.find(c=>c.classe===sst.c),L=$("#list"),E=db.etab;L.classList.add("plain");
   const sel=(id,opts,val,ph)=>`<select id="${id}"><option value="">${ph}</option>${opts.map(o=>`<option ${o===val?"selected":""}>${esc(o)}</option>`).join("")}</select>`;
   const ps=C?PERS(C):[];if(!ps.includes(sst.p))sst.p="";
@@ -1139,6 +1156,7 @@ function renderStats(){
   $("#sfm").onclick=()=>{tab="accueil";render();scrollTo(0,0)};$("#spdf").onclick=()=>saveDoc(statPDF(C,sst.p,sst.v),"Stats-"+sst.v+"-"+C.classe+"-"+sst.p+".pdf",t=>{$("#smsg").textContent=t});
 }
 function statPDF(C,p,v){
+  if(window.licTrial&&window.licTrial())return null;
   const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;
   const S=statData(C,p),E=db.etab,doc=new J({unit:"mm",format:"a4",orientation:v==="s"?"l":"p"}),W=doc.internal.pageSize.getWidth();
   doc.setFont("times","bold").setFontSize(10).text([E.nom||"","Année scolaire "+anneeSco()],W/2,12,{align:"center"});
@@ -1161,7 +1179,7 @@ async function saveDoc(doc,name,m){
   if(!dl){try{doc.save(name.replace(/\s+/g,"-"));m("PDF prêt.")}catch(e){m("Le PDF n’a pas pu être enregistré.")}return}
   try{await dl.save({filename:name.replace(/\s+/g,"-"),data:doc.output("arraybuffer")});m("PDF prêt.")}catch(e){m(e&&e.code==="declined"?"Téléchargement annulé.":"Le PDF n’a pas pu être enregistré.")}
 }
-async function dlPDF(C,all){const m=t=>{const b=$("#bmsg");if(b)b.textContent=t};return saveDoc(bulPDF(C,bst.p,all),"Bulletin-"+(all?"classe-":"")+C.classe+"-"+bst.p+".pdf",m)}
+async function dlPDF(C,all){const m=t=>{const b=$("#bmsg");if(b)b.textContent=t};if(window.licTrial&&window.licTrial()){m("L’export PDF des bulletins est désactivé pendant l’essai gratuit. Les bulletins restent consultables à l’écran.");return}return saveDoc(bulPDF(C,bst.p,all),"Bulletin-"+(all?"classe-":"")+C.classe+"-"+bst.p+".pdf",m)}
 let selMode=false,selIds=new Set(),lastTab="";
 async function delBatch(rows){
   const ids=rows.filter(r=>selIds.has(r.id));if(!ids.length)return;const set=new Set(ids.map(r=>r.id));let extra="";
@@ -1176,7 +1194,12 @@ async function delBatch(rows){
 const syUrl=p=>String((db.sync||{}).url||"").replace(/\/+$/,"")+"/ecoles/"+(db.sync||{}).key+"/"+p+".json";
 async function syPut(p,d){const r=await fetch(syUrl(p),{method:"PUT",body:JSON.stringify(d)});if(!r.ok)throw new Error(r.status);return r.json()}
 async function syGet(p){const r=await fetch(syUrl(p));if(!r.ok)throw new Error(r.status);return r.json()}
-let ensT=null,ensBusy=false,ensErr="",refT=null,ensSt="";
+async function ensLinkIsCurrent(){
+  if(!ENS||!ensGeneration)return false;
+  const active=await syGet("teacherLink");
+  return !!active&&active.token===ensGeneration;
+}
+let ensT=null,ensBusy=false,ensErr="",refT=null,ensSt="",ensGeneration="",ensExpired=false;
 /* Travail hors connexion : tout est enregistré sur l'appareil ; ce qui n'a pas pu partir au serveur est marqué « en attente »
    (mémorisé même si l'application est fermée) et renvoyé automatiquement dès que le réseau revient. */
 const PEND="scolanova-sync-attente-"+LS;let dirty=0,nbT=null;
@@ -1297,8 +1320,13 @@ function startPull(){
 async function syncRef(){return syPut("ref",{etab:{nom:db.etab.nom},classes:db.classes.map(c=>({id:c.id,classe:c.classe,niveau:c.niveau,cycle:c.cycle})),matieres:db.matieres.map(x=>({id:x.id,matiere:x.matiere,niveau:x.niveau,coef:x.coef,vol:x.vol})),eleves:db.eleves.map(e=>({id:e.id,nom:e.nom,prenom:e.prenom,sexe:e.sexe,classe:e.classe})),profs:db.profs.map(q=>({id:q.id,nom:q.nom,fam:q.fam,pre:q.pre,ens:q.ens||[],titulaire:q.titulaire||""})),t:Date.now()})}
 function autoRef(){markDirty();clearTimeout(refT);refT=setTimeout(flushRef,1500)}
 const ensMsg=t=>{ensSt=t;const l=$("#lead");if(l)l.textContent=t};
-function ensPush(){markDirty();clearTimeout(ensT);ensT=setTimeout(async()=>{const d0=dirty,mp={};db.notes.forEach(n=>{mp[[n.e,n.m,n.p].map(x=>encodeURIComponent(x).replace(/\./g,"%2E")).join("~")]={e:n.e,m:n.m,p:n.p,i1:n.i1,i2:n.i2,dv:n.dv,cp:n.cp}});try{const r=await fetch(syUrl("notes"),{method:"PATCH",body:JSON.stringify(mp)});if(!r.ok)throw 0;markClean(d0);ensMsg("Notes envoyées à l’administration.")}catch(e){netBar();ensMsg("Pas de connexion : vos notes sont enregistrées sur l’appareil et seront envoyées automatiquement dès le retour du réseau.")}},500)}
-async function ensLoad(){ensBusy=true;try{const d=await syGet("ref");if(d){db.classes=d.classes||[];db.matieres=d.matieres||[];db.eleves=d.eleves||[];db.profs=d.profs||[];db.etab=Object.assign(etabDef(),d.etab||{})}save()}catch(e){ensErr="Impossible de charger les listes ("+((e&&e.message)||"connexion")+").";ensMsg(ensErr)}ensBusy=false;render()}
+function ensPush(){if(ensExpired)return;markDirty();clearTimeout(ensT);ensT=setTimeout(async()=>{const d0=dirty,mp={};db.notes.forEach(n=>{mp[[n.e,n.m,n.p].map(x=>encodeURIComponent(x).replace(/\./g,"%2E")).join("~")]={e:n.e,m:n.m,p:n.p,i1:n.i1,i2:n.i2,dv:n.dv,cp:n.cp}});try{
+      if(!(await ensLinkIsCurrent())){ensExpired=true;clearTimeout(ensT);ensMsg("Lien invalide : l’administration a généré un nouveau lien. Vos notes ne seront pas envoyées. Demandez le lien actuel.");return}
+      const r=await fetch(syUrl("notes"),{method:"PATCH",body:JSON.stringify(mp)});if(!r.ok)throw 0;markClean(d0);ensMsg("Notes envoyées à l’administration.")
+    }catch(e){netBar();ensMsg("Impossible de vérifier le lien ou d’envoyer les notes. Vérifiez la connexion ; aucune note n’a été envoyée.")}},500)}
+async function ensLoad(){ensBusy=true;try{
+  if(!(await ensLinkIsCurrent())){ensExpired=true;ensErr="Lien invalide : l’administration a généré un nouveau lien. Demandez le lien actuel.";ensMsg(ensErr);ensBusy=false;render();return}
+  const d=await syGet("ref");if(d){db.classes=d.classes||[];db.matieres=d.matieres||[];db.eleves=d.eleves||[];db.profs=d.profs||[];db.etab=Object.assign(etabDef(),d.etab||{})}save()}catch(e){ensErr="Impossible de charger les listes ("+((e&&e.message)||"connexion")+").";ensMsg(ensErr)}ensBusy=false;render()}
 function renderSync(L){
   const S=db.sync=db.sync||{url:DB_URL,key:""};if(DB_URL)S.url=DB_URL;
   if(!ENS)renderDbSync(L);
@@ -1307,7 +1335,11 @@ function renderSync(L){
   $("#sy_g").onclick=()=>{$("#sy_k").value=Array.from(crypto.getRandomValues(new Uint8Array(12)),b=>b.toString(36).padStart(2,"0")).join("");rd()};
   $("#sy_s").onclick=async()=>{if(!requireLicensedOutput("la synchronisation avec les enseignants"))return;if(!rd())return m(NO);m("Envoi…");try{await syPut("ref",{etab:{nom:db.etab.nom},classes:db.classes.map(c=>({id:c.id,classe:c.classe,niveau:c.niveau,cycle:c.cycle})),matieres:db.matieres.map(x=>({id:x.id,matiere:x.matiere,niveau:x.niveau,coef:x.coef,vol:x.vol})),eleves:db.eleves.map(e=>({id:e.id,nom:e.nom,prenom:e.prenom,sexe:e.sexe,classe:e.classe})),profs:db.profs.map(q=>({id:q.id,nom:q.nom,fam:q.fam,pre:q.pre,ens:q.ens||[],titulaire:q.titulaire||""})),t:Date.now()});m("Listes envoyées : "+db.eleves.length+" élèves, "+db.classes.length+" classes, "+db.matieres.length+" matières, "+db.profs.length+" professeurs.")}catch(e){m("Échec de l’envoi. Cela ne marche que si l’application est hébergée sur votre site et si la base autorise l’accès.")}};
   $("#sy_r").onclick=async()=>{if(!requireLicensedOutput("la récupération des notes à distance"))return;if(!rd())return m(NO);m("Récupération…");try{const n=await pullNotes();m(n+" nouvelle(s) note(s) récupérée(s).")}catch(e){m("Échec de la récupération. Vérifiez la connexion.")}};
-  $("#sy_l").onclick=async()=>{if(!requireLicensedOutput("la création du lien enseignant"))return;if(!rd())return m(NO);m("Envoi des listes…");try{await syncRef()}catch(e){return m("Les listes n’ont pas pu être envoyées. Vérifiez la connexion et les règles de la base Firebase.")}const o=$("#sy_o");o.value=(APP_URL?APP_URL.replace(/\/$/,"")+"/":location.href.split("#")[0].split("?")[0])+"?ens="+encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify({u:S.url,k:S.key})))));o.style.display="";o.select();$("#sy_sh").style.display="";m(/claude/i.test(location.hostname)&&!APP_URL?"Ce lien ne marchera qu’une fois l’application hébergée sur votre site : générez-le depuis votre adresse finale.":"Lien prêt : touchez « Partager le lien » ou copiez-le.")};
+  $("#sy_l").onclick=async()=>{if(!requireLicensedOutput("la création du lien enseignant"))return;if(!rd())return m(NO);m("Envoi des listes…");try{
+      await syncRef();
+      const g=Array.from(crypto.getRandomValues(new Uint8Array(24)),b=>b.toString(16).padStart(2,"0")).join("");
+      await syPut("teacherLink",{token:g,created:Date.now()});
+      const o=$("#sy_o");o.value=(APP_URL?APP_URL.replace(/\/$/,"")+"/":location.href.split("#")[0].split("?")[0])+"?ens="+encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify({u:S.url,k:S.key,g})))));o.style.display="";o.select();$("#sy_sh").style.display="";m(/claude/i.test(location.hostname)&&!APP_URL?"Ce lien ne marchera qu’une fois l’application hébergée sur votre site : générez-le depuis votre adresse finale.":"Lien prêt : touchez « Partager le lien » ou copiez-le.")}catch(e){return m("Impossible de créer le lien. Vérifiez la connexion et les règles de la base Firebase.")}};
   $("#sy_sh").onclick=async()=>{
     const o=$("#sy_o"),u=o.value;let ok=false;
     const sel=()=>{try{o.focus();o.select();o.setSelectionRange(0,u.length)}catch(e){}};
@@ -1540,6 +1572,7 @@ function renderBulletin(){
 }
 
 function printBulletins(C,all){
+  if(window.licTrial&&window.licTrial()){const m=$("#bmsg");if(m)m.textContent="L’impression des bulletins est désactivée pendant l’essai gratuit. Les bulletins restent consultables à l’écran.";return}
   const D=bulData(C,bst.p),E=db.etab,d=new Date().toLocaleDateString("fr-FR"),dc=fdate(E.dateConseil)||d,ann=annAll(C);
   const idx=all?D.rows.map((_,i)=>i):[bst.i];
   let a=document.getElementById("printArea");if(!a){a=document.createElement("div");a.id="printArea";document.body.appendChild(a)}
@@ -1877,7 +1910,7 @@ $("#nav").onclick=e=>{const b=e.target.closest("button");if(b){const dest=b.data
 
 db=ENS?(()=>{try{const r=localStorage.getItem(LS);if(r)return JSON.parse(r)}catch(e){}return{classes:[],matieres:[],profs:[],eleves:[],notes:[],seq:1,etab:etabDef()}})():load();db.notes=db.notes||[];db.exams=db.exams||[];db.edt=db.edt||{refus:{},apm:{},jum:false,res:null};db.nat=db.nat||{};db.etab=db.etab||etabDef();
 if(!ENS)initialiserMatriculesExistants();
-if(ENS){document.body.classList.add("ens");ORDER.splice(0,ORDER.length,"notes");tab="notes";try{const c=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(TOK)))));db.sync={url:c.u,key:c.k}}catch(e){}render();ensLoad()}else render();
+if(ENS){document.body.classList.add("ens");ORDER.splice(0,ORDER.length,"notes");tab="notes";try{const c=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(TOK)))));db.sync={url:c.u,key:c.k};ensGeneration=String(c.g||"")}catch(e){}render();ensLoad()}else render();
 window.LOGOJ=window.LOGOJ||{};
 function prepLogo(){const l=db&&db.etab&&db.etab.logo;if(!l||/^data:image\/jpe?g/i.test(l)||window.LOGOJ[l])return;const im=new Image();im.onload=()=>{const c=document.createElement("canvas");c.width=im.width;c.height=im.height;const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,c.width,c.height);g.drawImage(im,0,0);window.LOGOJ[l]=c.toDataURL("image/jpeg",.92)};im.src=l}
 prepLogo();
@@ -1896,7 +1929,10 @@ prepLogo();
   const expired=()=>{const l=get();return !!(l&&l.x&&Date.now()>l.x)};
   const expMsg=x=>{const l=get();return l&&l.ty==="essai"?"Votre essai gratuit s’est terminé le "+fd(x)+". Contactez votre fournisseur ScolaNova pour obtenir votre licence : vos données restent conservées.":"Votre licence a expiré le "+fd(x)+". Contactez votre fournisseur ScolaNova pour la renouveler : vos données restent conservées."};
   const ok=()=>{const l=get();return !!(l&&l.id&&l.k)&&!expired()};
+  const isTrial=()=>{const l=get();return !!(l&&l.ty==="essai")&&!expired()};
   const normPwd=p=>String(p||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+  window.licTrial=isTrial;
+  window.licNotice=msg=>{let n=document.getElementById("lic-notice");if(!n){n=document.createElement("div");n.id="lic-notice";n.setAttribute("role","status");n.style.cssText="position:fixed;z-index:99999;left:12px;right:12px;bottom:12px;padding:14px;border-radius:10px;background:#222;color:#fff;box-shadow:0 4px 18px #0005;font-size:14px";document.body.appendChild(n)}n.textContent=msg;clearTimeout(n._timer);n._timer=setTimeout(()=>n.remove(),6500)};
   const hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
   async function pbk(pw,salt,bits){const k=await crypto.subtle.importKey("raw",new TextEncoder().encode(pw),"PBKDF2",false,["deriveBits"]);return hex(await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(salt),iterations:100000},k,bits))}
   const lic=id=>fetch(DB_URL+"/licences/"+encodeURIComponent(id)+".json");
@@ -1906,7 +1942,7 @@ prepLogo();
   function show(msg){
     close();document.body.classList.add("locked");ov=document.createElement("div");ov.id="lock";
     if(expired())msg=expMsg(get().x);
-    ov.innerHTML=`<div class="lbox"><h2 style="margin:0 0 6px">Activer votre accès</h2><div class="s" style="margin-bottom:10px">${msg||"Pour enregistrer vos données, saisissez l’identifiant et le mot de passe remis par votre fournisseur ScolaNova. Sans activation, vous pouvez saisir les classes, matières, professeurs, élèves et notes. Les bulletins, statistiques, emplois du temps, documents PDF et fonctions à distance restent verrouillés."}</div>
+    ov.innerHTML=`<div class="lbox"><h2 style="margin:0 0 6px">Activer votre accès</h2><div class="s" style="margin-bottom:10px">${msg||"Pour enregistrer vos données, saisissez l’identifiant et le mot de passe remis par votre fournisseur ScolaNova. Pendant l’essai gratuit, vous pouvez saisir les classes, matières, professeurs, élèves et notes, puis consulter les bulletins à l’écran. Les statistiques et l’affichage des emplois du temps sont verrouillés ; l’export PDF et l’impression des bulletins sont désactivés. Une licence activée débloque ces fonctions."}</div>
     <label>Identifiant</label><input id="lc_u" autocapitalize="off" autocomplete="off"><label>Mot de passe</label><input id="lc_p" autocapitalize="characters" autocomplete="off">
     <a href="https://wa.me/22890535045?text=Bonjour%2C%20je%20souhaite%20obtenir%20mon%20identifiant%20et%20mon%20mot%20de%20passe%20d%E2%80%99activation%20de%20ScolaNova." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:9px;margin:12px 0;padding:11px;border-radius:9px;background:#25D366;color:#fff;text-decoration:none;font-weight:700"><svg width="23" height="23" viewBox="0 0 32 32" aria-hidden="true" style="fill:currentColor"><path d="M16 .8A15 15 0 0 0 3.1 23.5L1 31l7.7-2A15.1 15.1 0 1 0 16 .8zm0 27.4a12.3 12.3 0 0 1-6.3-1.7l-.5-.3-4.6 1.2 1.2-4.5-.3-.5A12.4 12.4 0 1 1 16 28.2zm6.8-9.2c-.4-.2-2.1-1-2.5-1.1-.3-.1-.6-.2-.8.2-.3.4-.9 1.1-1.1 1.3-.2.3-.4.3-.8.1-.4-.2-1.5-.6-2.9-1.8-1.1-1-1.8-2.1-2-2.5-.2-.4 0-.6.2-.8l.6-.7c.2-.2.3-.4.4-.6.1-.2 0-.5 0-.7-.1-.2-.8-1.9-1.1-2.6-.3-.7-.6-.6-.8-.6h-.7c-.2 0-.7.1-1 .5-.4.4-1.3 1.3-1.3 3.1s1.3 3.6 1.5 3.8c.2.3 2.6 4 6.2 5.5.9.4 1.6.6 2.1.7.9.3 1.7.2 2.3.1.7-.1 2.1-.9 2.4-1.8.3-.9.3-1.7.2-1.8-.1-.2-.3-.3-.7-.5z"/></svg>Nous contacter sur WhatsApp</a>
     <div class="err" id="lc_e" role="alert"></div><div class="btns"><button type="button" id="lc_x">Plus tard</button>${get()?"":`<button type="button" id="lc_t">Essai gratuit</button>`}<button type="button" class="ok" id="lc_ok">Activer</button></div></div>`;
@@ -1936,9 +1972,9 @@ prepLogo();
   }
   function showEssai(){
     const box=ov.querySelector(".lbox");
-    box.innerHTML=`<h2 style="margin:0 0 6px">Essai gratuit de ${ESSAI_JOURS} jours</h2><div class="s" style="margin-bottom:10px">Créez l’accès de votre établissement : toutes les fonctions sont disponibles pendant ${ESSAI_JOURS} jours. Le nom de l’établissement et votre contact sont enregistrés pour gérer votre licence.</div>
-    <label>Nom de l’établissement</label><input id="et_n" autocomplete="off">
-    <label>Téléphone ou e-mail (facultatif)</label><input id="et_c" autocomplete="off">
+    box.innerHTML=`<h2 style="margin:0 0 6px">Essai gratuit de ${ESSAI_JOURS} jours</h2><div class="s" style="margin-bottom:10px">Créez l’accès de votre établissement pendant ${ESSAI_JOURS} jours. Pendant l’essai, vous pouvez saisir les notes et consulter les bulletins à l’écran. Les statistiques et l’affichage des emplois du temps sont verrouillés ; l’export PDF et l’impression des bulletins sont désactivés. Le serveur vérifie le nom de l’établissement pour empêcher un second essai avec le même nom. Le contact est facultatif et peut être modifié.</div>
+    <label>Nom de l’établissement (obligatoire)</label><input id="et_n" autocomplete="off">
+    <label>Téléphone ou e-mail de contact (facultatif)</label><input id="et_c" autocomplete="off">
     <label>Identifiant (lettres minuscules, chiffres)</label><input id="et_u" autocapitalize="off" autocomplete="off">
     <label>Mot de passe (6 caractères minimum, lettres et chiffres)</label><input id="et_p" autocapitalize="characters" autocomplete="off">
     <div class="err" id="et_e" role="alert"></div><div class="btns"><button type="button" id="et_b">Retour</button><button type="button" class="ok" id="et_ok">Créer mon essai</button></div>`;
@@ -1949,24 +1985,44 @@ prepLogo();
       if(nom.length<3)return e("Saisissez le nom de l’établissement.");
       if(!/^[a-z0-9._-]{3,30}$/.test(id))return e("Identifiant : 3 à 30 caractères, lettres minuscules, chiffres, point, tiret.");
       if(pw.length<6)return e("Le mot de passe doit contenir au moins 6 lettres ou chiffres.");
-      let dejaEssai=false;try{dejaEssai=!!localStorage.getItem("scolanova-essai")}catch(x){}
-      if(dejaEssai)return e("Un essai a déjà été créé sur cet appareil. Saisissez votre accès ou contactez-nous.");
       if(!DB_URL||!(window.crypto&&crypto.subtle))return e("Création impossible dans cet affichage. Ouvrez l’application depuis son adresse Internet.");
-      e("Création en cours…");q("#et_ok").disabled=true;
+      e("Vérification de l’essai sur le serveur…");q("#et_ok").disabled=true;
+      const reservationKeys=[];
       try{
-        let r;try{r=await lic(id)}catch(x){throw"Connexion Internet requise."}
+        const normNom=nom.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+        if(!normNom)return e("Saisissez un nom d’établissement valide.");
+        /* Le nom normalisé est la seule clé anti-double-essai. Le contact reste modifiable. */
+        const identites=["nom|"+normNom];
+        const now=Date.now(),reservation={id,nom,contact:ct,cree:now,etat:"reservation"};
+        for(const identite of identites){
+          const dig=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(identite));
+          const rk=hex(dig);
+          let rr=await fetch(DB_URL+"/essai-registre/"+rk+".json",{headers:{"X-Firebase-ETag":"true"}});
+          if(!rr.ok)throw"Le serveur ne permet pas de vérifier les essais (code "+rr.status+"). Contactez-nous.";
+          const ancien=await rr.json(),etag=rr.headers.get("ETag");
+          if(ancien)throw"Un essai gratuit a déjà été créé pour ce nom d’établissement. Saisissez votre accès ou contactez ScolaNova.";
+          if(!etag)throw"Le serveur ne permet pas de réserver un essai de manière sécurisée. Contactez ScolaNova.";
+          rr=await fetch(DB_URL+"/essai-registre/"+rk+".json",{method:"PUT",headers:{"Content-Type":"application/json","If-Match":etag},body:JSON.stringify(reservation)});
+          if(rr.status===412)throw"Un essai gratuit vient d’être créé pour ce nom d’établissement. Un seul essai est autorisé.";
+          if(!rr.ok)throw"Impossible d’enregistrer l’essai sur le serveur (code "+rr.status+"). Contactez-nous.";
+          reservationKeys.push(rk);
+        }
+        let r=await lic(id);
         if(r.ok&&await r.json())throw"Cet identifiant existe déjà. Choisissez-en un autre.";
-        const s=hex(crypto.getRandomValues(new Uint8Array(12))),h=await pbk(pw,s,256),now=Date.now();
-        const rec={actif:true,type:"essai",s,h,nom,contact:ct,cree:now,exp:now+ESSAI_JOURS*864e5};
+        const s=hex(crypto.getRandomValues(new Uint8Array(12))),h=await pbk(pw,s,256),created=Date.now();
+        const rec={actif:true,type:"essai",s,h,nom,contact:ct,cree:created,exp:created+ESSAI_JOURS*864e5};
         r=await fetch(DB_URL+"/licences/"+encodeURIComponent(id)+".json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(rec)});
         if(!r.ok)throw"Création impossible pour le moment (code "+r.status+"). Contactez-nous sur WhatsApp.";
         const k=(await pbk(pw,s+":k",144)).slice(0,24),kd=(await pbk(pw,s+":d",144)).slice(0,24);
-        localStorage.setItem(KEY,JSON.stringify({id,nom,k,kd,hh:h,x:rec.exp,ty:"essai",t:now}));
-        try{localStorage.setItem("scolanova-essai",String(now))}catch(x){}
+        localStorage.setItem(KEY,JSON.stringify({id,nom,k,kd,hh:h,x:rec.exp,ty:"essai",t:created}));
+        await Promise.all(reservationKeys.map(rk=>fetch(DB_URL+"/essai-registre/"+rk+".json",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({etat:"actif",exp:rec.exp})})));
         db.sync=db.sync||{};db.sync.url=DB_URL;db.sync.key=k;
         close();drawBar();if(window.licApplyName)window.licApplyName();save();render();if(window.dsKick)window.dsKick();
         alert("Votre essai gratuit est actif jusqu’au "+fd(rec.exp)+".\nIdentifiant : "+id+"\nNotez bien votre identifiant et votre mot de passe.");
-      }catch(x){e(typeof x==="string"?x:"Une erreur est survenue. Réessayez.")}
+      }catch(x){
+        for(const rk of reservationKeys){try{const rr=await fetch(DB_URL+"/essai-registre/"+rk+".json");const v=rr.ok?await rr.json():null;if(v&&v.id===id)await fetch(DB_URL+"/essai-registre/"+rk+".json",{method:"DELETE"})}catch(z){}}
+        e(typeof x==="string"?x:"Une erreur est survenue. Réessayez.")
+      }
       if(ov&&q("#et_ok"))q("#et_ok").disabled=false;
     };
     setTimeout(()=>{const f=q("#et_n");if(f)f.focus()},50);
@@ -1979,7 +2035,7 @@ prepLogo();
       const nn=d.nom?String(d.nom).trim():"";if(nn&&nn!==l.nom){l.nom=nn;localStorage.setItem(KEY,JSON.stringify(l))}
       if(window.licApplyName())render()}catch(e){}
   }
-  setTimeout(()=>{try{if(!get()&&DB_URL&&navigator.onLine&&!localStorage.getItem("scolanova-bienvenue")){localStorage.setItem("scolanova-bienvenue","1");show("Bienvenue sur ScolaNova. Essayez gratuitement toutes les fonctions pendant "+ESSAI_JOURS+" jours en créant l’accès de votre établissement, ou saisissez l’identifiant et le mot de passe remis par votre fournisseur.")}}catch(e){}},1500);
+  setTimeout(()=>{try{if(!get()&&DB_URL&&navigator.onLine&&!localStorage.getItem("scolanova-bienvenue")){localStorage.setItem("scolanova-bienvenue","1");show("Bienvenue sur ScolaNova. Essayez ScolaNova gratuitement pendant "+ESSAI_JOURS+" jours : saisie des notes et consultation des bulletins à l’écran. Les statistiques, l’affichage des emplois du temps, l’export PDF et l’impression des bulletins sont limités pendant l’essai. Créez l’accès de votre établissement ou saisissez vos identifiants.")}}catch(e){}},1500);
   window.licGate=()=>{if(ok())return false;if(!asked){asked=true;show()}return true};
   window.licOK=ok;window.licShow=show;
   /* Nom officiel de l'établissement activé (vient de l'enregistrement créé par le générateur d'accès) */
