@@ -327,7 +327,11 @@ const nextName=n=>{const k=db.classes.filter(c=>c.niveau===n).length;return cyc(
 function seed(){return{seq:1,classes:[],matieres:[],profs:[],eleves:[],notes:[],etab:etabDef()}}
 function load(){try{const r=localStorage.getItem(LS);if(r)return JSON.parse(r)}catch(e){}return seed()}
 function save(){try{const ln=window.licName&&window.licName();if(ln&&db&&db.etab&&db.etab.nom!==ln)db.etab.nom=ln}catch(e){}try{localStorage.setItem(LS,JSON.stringify(db))}catch(e){}if(ENS&&!ensBusy)ensPush();else if(!ENS&&db&&db.sync&&db.sync.key&&DB_URL&&window.licOK&&window.licOK())autoRef();dsMark()}
-const OUTPUT_TABS=new Set(["bulletin","stats","examen","emploi","listes"]);
+const OUTPUT_TABS=new Set(["stats","examen"]);
+function isRestrictedFreeMode(){
+  if(typeof ENS!=="undefined"&&ENS)return false;
+  return !(window.licOK&&window.licOK()) || !!(window.licTrial&&window.licTrial());
+}
 function requireLicensedOutput(feature){
   if(typeof ENS!=="undefined"&&ENS)return true;
   if(window.licOK&&window.licOK()){
@@ -726,6 +730,7 @@ function bulPDF(C,p,all){
 }
 async function dlPDF(C,all){
   const m=t=>{const b=$("#bmsg");if(b)b.textContent=t};
+  if(isRestrictedFreeMode())return m("L’export PDF des bulletins est réservé à une licence activée. Les bulletins restent consultables à l’écran.");
   const doc=bulPDF(C,bst.p,all);if(!doc)return m("Le module PDF n’a pas pu se charger.");
   let dl=null;try{dl=window.claude&&await window.claude.use("downloads")}catch(e){}
   if(!dl)return m("Le téléchargement n’est pas disponible dans cet affichage.");
@@ -1039,7 +1044,7 @@ async function edtRun(msg,limit){
 const edst={v:"p",rv:"c",c:"",p:"",d:1};
 function renderEmploi(){
   const L=$("#list");L.classList.add("plain");$("#tools").innerHTML="";const ed=db.edt,on="background:var(--accent);color:var(--on-accent)",cs=clSort(db.classes),res=ed.res;
-  if(window.licTrial&&window.licTrial()&&edst.v==="r"){
+  if(isRestrictedFreeMode()&&edst.v==="r"){
     L.innerHTML=`<li class="bul" style="padding:16px"><b>Emploi du temps généré</b><div class="s" style="padding-top:8px">La génération a été exécutée, mais l’affichage des emplois du temps est réservé à une licence activée. Les résultats restent masqués pendant l’essai gratuit.</div><div class="btns" style="margin-top:12px"><button type="button" class="ok" id="etrialback">Retour aux paramètres</button><button type="button" class="btnline" id="etriallic">Activer une licence</button></div></li>`;
     $("#etrialback").onclick=()=>{edst.v="p";renderEmploi()};
     $("#etriallic").onclick=()=>{if(window.licShow)window.licShow("Saisissez votre identifiant et votre mot de passe pour activer la licence et afficher les emplois du temps.")};
@@ -1068,10 +1073,10 @@ function renderEmploi(){
   L.oninput=e=>{const i=e.target;if(i.dataset.p){(ed.refus[i.dataset.p]=ed.refus[i.dataset.p]||{})[i.dataset.j]=i.value;save()}};
   L.onchange=e=>{const i=e.target;if(i.dataset.a){ed.apm[i.dataset.a]=i.checked;save()}};
   if($("#egen"))$("#egen").onclick=async()=>{$("#egen").disabled=true;const sb=$("#estop");sb.style.display="";sb.onclick=()=>{edtStop=true;sb.disabled=true};let wl=null;try{wl=await navigator.wakeLock.request("screen")}catch(e){}await edtRun(t=>{const m=$("#emsg");if(m)m.textContent=t});try{if(wl)await wl.release()}catch(e){}edst.v="r";renderEmploi()};
-  if($("#epdf"))$("#epdf").onclick=()=>saveDoc(edtPDF(edst.rv==="p"?"p":edst.rv==="g"?"g":"c"),"Emplois-du-temps-"+({c:"classes",p:"profs",g:"general",n:"classes"}[edst.rv])+".pdf",t=>{$("#emsg").textContent=t});
+  if($("#epdf"))$("#epdf").onclick=()=>{if(isRestrictedFreeMode()){$("#emsg").textContent="L’export PDF et l’affichage des emplois du temps nécessitent une licence activée.";return}saveDoc(edtPDF(edst.rv==="p"?"p":edst.rv==="g"?"g":"c"),"Emplois-du-temps-"+({c:"classes",p:"profs",g:"general",n:"classes"}[edst.rv])+".pdf",t=>{$("#emsg").textContent=t})};
 }
 function edtPDF(kind){
-  if(window.licTrial&&window.licTrial())return null;
+  if(isRestrictedFreeMode())return null;
   const J=window.jspdf&&window.jspdf.jsPDF,res=db.edt.res;if(!J||!res)return null;
   const doc=new J({unit:"mm",format:"a4",orientation:kind==="g"?"l":"p"}),E=db.etab,W=doc.internal.pageSize.getWidth(),PH=doc.internal.pageSize.getHeight(),H=[1,2,3,4,5,6,7];
   const st={font:"times",fontStyle:"bold",fontSize:10,cellPadding:2.4,lineColor:0,lineWidth:.25,textColor:0,halign:"center",valign:"middle",fillColor:255};
@@ -1135,9 +1140,9 @@ function statRows(S){
   return[two("Effectif",x=>x.eff),two("Composants",x=>x.comp),two("Absents",x=>x.abs),...S.B.map((b,i)=>two(b[2],x=>x.b[i])),one("Forte note",c=>c.mx==null?"":c.mx),one("Faible note",c=>c.mn==null?"":c.mn),one("Moyenne note",c=>fm(c.av))];
 }
 function renderStats(){
-  if(window.licTrial&&window.licTrial()){
+  if(isRestrictedFreeMode()){
     const L=$("#list");L.classList.add("plain");$("#tools").innerHTML="";
-    L.innerHTML='<li class="bul" style="padding:16px"><b>Statistiques indisponibles pendant l’essai gratuit</b><div class="s" style="padding-top:8px">Les statistiques et leur export PDF nécessitent une licence activée.</div></li>';return;
+    L.innerHTML='<li class="bul" style="padding:16px"><b>Statistiques indisponibles en mode gratuit</b><div class="s" style="padding-top:8px">Les statistiques et leur export PDF nécessitent une licence activée.</div></li>';return;
   }
   const C=db.classes.find(c=>c.classe===sst.c),L=$("#list"),E=db.etab;L.classList.add("plain");
   const sel=(id,opts,val,ph)=>`<select id="${id}"><option value="">${ph}</option>${opts.map(o=>`<option ${o===val?"selected":""}>${esc(o)}</option>`).join("")}</select>`;
@@ -1568,11 +1573,12 @@ function renderBulletin(){
   if($("#abx"))$("#abx").onclick=async()=>{const l=abandonList(C)||[];if(!await confirmUI("Archiver "+l.length+" élève(s) sans notes comme abandons ?","Archiver"))return;l.forEach(e=>archivePush(e,"Abandon"));save();bst.i=0;render()};
   $("#bpv").onclick=()=>{bst.i--;renderBulletin()};$("#bnx").onclick=()=>{bst.i++;renderBulletin()};
   $("#bp1").onclick=()=>dlPDF(C,false);$("#bp2").onclick=()=>dlPDF(C,true);$("#bpr1").onclick=()=>printBulletins(C,false);$("#bpr2").onclick=()=>printBulletins(C,true);
+  if(isRestrictedFreeMode())["bp1","bp2","bpr1","bpr2"].forEach(id=>{const b=$("#"+id);if(b)b.hidden=true});
   bindBonus(C);
 }
 
 function printBulletins(C,all){
-  if(window.licTrial&&window.licTrial()){const m=$("#bmsg");if(m)m.textContent="L’impression des bulletins est désactivée pendant l’essai gratuit. Les bulletins restent consultables à l’écran.";return}
+  if(isRestrictedFreeMode()){const m=$("#bmsg");if(m)m.textContent="L’impression des bulletins est réservée à une licence activée. Les bulletins restent consultables à l’écran.";return}
   const D=bulData(C,bst.p),E=db.etab,d=new Date().toLocaleDateString("fr-FR"),dc=fdate(E.dateConseil)||d,ann=annAll(C);
   const idx=all?D.rows.map((_,i)=>i):[bst.i];
   let a=document.getElementById("printArea");if(!a){a=document.createElement("div");a.id="printArea";document.body.appendChild(a)}
@@ -1749,10 +1755,11 @@ function renderListes(){
   if(!ms.includes(lst.m))lst.m="";
   const sel=(id,o,v,ph)=>`<select id="${id}"><option value="">${ph}</option>${o.map(x=>`<option ${x===v?"selected":""}>${esc(x)}</option>`).join("")}</select>`;
   $("#tools").innerHTML=`<div class="ntools">${sel("lc",cls(),lst.c,"Classe…")}${C?sel("lm",ms,lst.m,"Matière (facultatif)")+`<button type="button" class="btnline" id="lp1">Fiche de relevé de notes (PDF)</button><button type="button" class="btnline" id="lp3">Toutes les matières de la classe (PDF)</button><button type="button" class="btnline" id="lp2">Liste nominative (PDF)</button>`:""}</div>`;
+  if(isRestrictedFreeMode())["lp1","lp2","lp3"].forEach(id=>{const b=$("#"+id);if(b)b.hidden=true});
   $("#lc").onchange=e=>{lst.c=e.target.value;lst.m="";render()};
   if($("#lm"))$("#lm").onchange=e=>{lst.m=e.target.value;render()};
   if(!C){L.innerHTML='<li class="hint" style="padding-left:16px">Choisissez une classe.</li>';return}
-  const go=(k)=>{const d=listePDF(C,k,lst.m);const m=$("#lmsg");if(!d){if(m)m.textContent="Le module PDF n’a pas pu se charger.";return}d.save(((k==="nom"?"Liste-":"Fiche-")+C.classe+(k==="fiche"&&lst.m?"-"+lst.m:"")+".pdf").replace(/\s+/g,"-"));if(m)m.textContent="PDF créé."};
+  const go=(k)=>{const m=$("#lmsg");if(isRestrictedFreeMode()){if(m)m.textContent="L’export PDF est réservé à une licence activée. La liste reste consultable à l’écran.";return}const d=listePDF(C,k,lst.m);if(!d){if(m)m.textContent="Le module PDF n’a pas pu se charger.";return}d.save(((k==="nom"?"Liste-":"Fiche-")+C.classe+(k==="fiche"&&lst.m?"-"+lst.m:"")+".pdf").replace(/\s+/g,"-"));if(m)m.textContent="PDF créé."};
   $("#lp1").onclick=()=>go("fiche");$("#lp2").onclick=()=>go("nom");$("#lp3").onclick=()=>go("toutes");
   const els=listeRows(C),pr=lst.m?db.profs.find(p=>(p.ens||[]).includes(lst.m+"|"+C.classe)):null,per=cyc(C.niveau)===1?["1er Trimestre","2e Trimestre","3e Trimestre"]:["1er Semestre","2e Semestre"];
   const sub=per.map(()=>"<th>Int 1</th><th>Int 2</th><th>Dev</th><th>Comp</th>").join("");
