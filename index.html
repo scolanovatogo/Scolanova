@@ -545,10 +545,15 @@ function renderNotes(){if(ENS&&ensSt)$("#lead").textContent=ensSt;
     L.innerHTML=res.map(r=>`<li><div class="row" style="cursor:default"><span class="num">${r.rk??"—"}</span><span class="txt"><div class="t">${ENT.eleves.title(r.e)}</div><div class="s">Moyenne générale ${fm(r.mg)} · ${r.imp?"reprise de l’établissement d’origine":r.c+" matière(s) sur "+mats.length}</div></span></div></li>`).join("");
   }
 }
+/* une note valide : vide, ou un nombre de 0 à 20 (virgule ou point) ; tout le reste est refusé */
+const noteValide=s=>{const v=String(s??"").trim().replace(",",".");return v===""||(/^(\d+(\.\d*)?|\.\d+)$/.test(v)&&+v<=20)};
+const NOTE_MSG=v=>"La note « "+String(v).trim()+" » n’est pas valide : elle doit être comprise entre 0 et 20. Veuillez la corriger.";
 function notesInput(e){
   const t=e.target;if(!t.dataset.f||!nst.d)return;
-  const v=t.value.trim().replace(",",".");const ok=v===""||(!isNaN(+v)&&+v>=0&&+v<=20);
-  t.style.borderColor=ok?"":"var(--accent)";if(!ok)return;
+  const v=t.value.trim().replace(",",".");const ok=noteValide(v);
+  t.style.borderColor=ok?"":"var(--accent)";t.style.outline=ok?"":"2px solid var(--accent)";
+  {const m=$("#nmsg");if(m)m.textContent=ok?"":NOTE_MSG(t.value)}
+  if(!ok)return;
   nst.d.vals[t.dataset.f]=v;
   const C=db.classes.find(c=>c.classe===nst.c);
   $("#r"+nst.d.id).textContent=resTxt(calc(nst.d.vals,+db.matieres.find(m=>m.niveau===C.niveau&&m.matiere===nst.m).coef));
@@ -558,6 +563,8 @@ function commitNotes(cb){
   const d=nst.d,F=["i1","i2","dv","cp"];
   if(tab!=="notes"||!d){cb();return}
   const sv=x=>String(x??"");
+  {const bad=[...document.querySelectorAll("#list input[data-f]")].find(i=>!noteValide(i.value));
+   if(bad){const m=$("#nmsg");if(m)m.textContent=NOTE_MSG(bad.value)+" Rien n’a été enregistré.";bad.style.borderColor="var(--accent)";bad.focus();return}}
   if(!F.some(f=>sv(d.vals[f])!==sv(d.orig[f]))){nst.d=null;cb();return}
   const doSave=()=>{let n=getN(d.id,d.m,d.p);if(!n){n={e:d.id,m:d.m,p:d.p,i1:"",i2:"",dv:"",cp:""};db.notes.push(n)}F.forEach(f=>n[f]=d.vals[f]);save();nst.d=null;cb()};
   if(F.some(f=>sv(d.orig[f])!==""))ask("Voulez-vous vraiment modifier la note de cet élève ?",doSave,()=>{nst.d=null;render()});
@@ -1352,12 +1359,12 @@ function startSyncRetry(){
   document.addEventListener("visibilitychange",()=>{if(!document.hidden){syncNow();dsRun()}});
   setInterval(()=>{syncNow();if(!document.hidden)dsRun()},30000);netBar();syncNow();setTimeout(()=>{dsRun();dsAskKd()},2500)}
 async function pullNotes(){
-  const d=await syNotes();db.seen=db.seen||{};let n=0;
+  const d=await syNotes();db.seen=db.seen||{};let n=0,badv=0;
   Object.keys(d).forEach(k=>{const x=d[k];if(!x||x.e==null)return;const sig=JSON.stringify([x.i1,x.i2,x.dv,x.cp]);if(db.seen[k]===sig)return;
     let r=getN(x.e,x.m,x.p);if(!r){r={e:x.e,m:x.m,p:x.p,i1:"",i2:"",dv:"",cp:""};db.notes.push(r)}
-    ["i1","i2","dv","cp"].forEach(f=>{if(x[f]!==undefined&&x[f]!=="")r[f]=x[f]});db.seen[k]=sig;n++});
+    ["i1","i2","dv","cp"].forEach(f=>{if(x[f]!==undefined&&x[f]!==""){if(noteValide(x[f]))r[f]=x[f];else badv++}});db.seen[k]=sig;n++});
   if(n){dsApplying=true;try{save()}finally{dsApplying=false}if(!(tab==="notes"&&nst.d))render();setTimeout(()=>{const l=$("#lead");if(l)l.textContent=n+" note(s) reçue(s) des enseignants."},0)}
-  if(notesBad)setTimeout(()=>{const l=$("#lead");if(l)l.textContent=notesBad+" note(s) ignorée(s) : non chiffrées ou non conformes."},0);
+  if(notesBad||badv)setTimeout(()=>{const l=$("#lead");if(l)l.textContent=(notesBad?notesBad+" note(s) ignorée(s) : non chiffrées ou non conformes. ":"")+(badv?badv+" valeur(s) hors de 0 à 20 reçue(s) des enseignants : ignorée(s). Demandez à l’enseignant de corriger et de renvoyer.":"")},0);
   try{await notesCleanup()}catch(e){}
   return n;
 }
@@ -1918,15 +1925,16 @@ $("#ngo").onclick=()=>{
     const info=rows.info?rows.info+" ":"";
     if(!rows.length)return err(info+"Aucune ligne reconnue. Il faut le nom et les notes de chaque élève.");
     const sidx=db.eleves.filter(e=>e.classe===nst.c).map(e=>({e,t:ntok(e.nom+" "+e.prenom)}));
-    const seen=new Set(),plan=[],miss=[],dup=[],amb=[];let inv=0,chg=0,part=0,nov=0;
+    const seen=new Set(),plan=[],miss=[],dup=[],amb=[],bad=[];let inv=0,chg=0,part=0,nov=0;
     rows.forEach(({ident,vals})=>{
       const r=nFind(ident,sidx);if(r.amb){amb.push(ident);return}if(!r.e){miss.push(ident);return}
       if(seen.has(r.e.id)){dup.push(ident);return}seen.add(r.e.id);
-      Object.keys(vals).forEach(k=>{const x=+vals[k];if(isNaN(x)||x<0||x>20){inv++;delete vals[k]}});
+      Object.keys(vals).forEach(k=>{if(vals[k]!==""&&!noteValide(vals[k]))bad.push((r.e.nom+" "+(r.e.prenom||"")).trim()+" : "+vals[k])});
       if(!Object.keys(vals).length){nov++;return}
       if(r.part)part++;
       const n=getN(r.e.id,nst.m,nst.p)||{};Object.keys(vals).forEach(k=>{if((n[k]??"")!==""&&+n[k]!==+vals[k])chg++});
       plan.push({e:r.e,vals})});
+    if(bad.length)return err("Import refusé : "+bad.length+" note(s) hors norme (une note doit être comprise entre 0 et 20) — "+lst5(bad)+". Aucune note n’a été importée. Veuillez corriger le fichier puis réessayer.");
     const msg=()=>info+plan.length+" élève(s) mis à jour."+(part?" "+part+" reconnu(s) par correspondance partielle du nom.":"")+(dup.length?" "+dup.length+" doublon(s) ignoré(s) : le premier est conservé ("+lst5(dup)+").":"")+(amb.length?" "+amb.length+" nom(s) ambigu(s), ignoré(s) ("+lst5(amb)+").":"")+(miss.length?" "+miss.length+" nom(s) introuvable(s) dans la classe "+nst.c+" ("+lst5(miss)+").":"")+(nov?" "+nov+" ligne(s) sans note.":"")+(inv?" "+inv+" note(s) invalide(s) ignorée(s) (0 à 20).":"");
     const apply=()=>{
       plan.forEach(({e,vals})=>{let n=getN(e.id,nst.m,nst.p);if(!n){n={e:e.id,m:nst.m,p:nst.p,i1:"",i2:"",dv:"",cp:""};db.notes.push(n)}Object.assign(n,vals)});
