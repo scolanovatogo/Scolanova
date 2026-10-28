@@ -1,0 +1,6 @@
+ScolaNova — fichiers PWA
+
+Le fichier index.html est une copie inchangée du fichier fourni (comparaison binaire identique).
+Les fichiers manifest.webmanifest et les icônes sont les éléments préparés pour PWABuilder.
+
+Téléversez les fichiers à la racine du dépôt GitHub Pages Scolanova, en conservant les autres fichiers existants. Vérifiez d’abord que le manifeste pointe vers les icônes à la racine.
