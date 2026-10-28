@@ -1240,7 +1240,7 @@ async function notesCleanup(){
 async function ensLinkIsCurrent(){
   if(!ENS||!ensGeneration)return false;
   const active=await syGet("teacherLink");
-  return !!active&&active.token===ensGeneration;
+  return !!active&&active.token===ensGeneration&&Number.isFinite(active.exp)&&Date.now()<=active.exp;
 }
 let ensT=null,ensBusy=false,ensErr="",refT=null,ensSt="",ensGeneration="",ensExpired=false;
 /* Travail hors connexion : tout est enregistré sur l'appareil ; ce qui n'a pas pu partir au serveur est marqué « en attente »
@@ -1370,11 +1370,11 @@ async function syncRef(){return syPut("ref",{etab:{nom:db.etab.nom},classes:db.c
 function autoRef(){markDirty();clearTimeout(refT);refT=setTimeout(flushRef,1500)}
 const ensMsg=t=>{ensSt=t;const l=$("#lead");if(l)l.textContent=t};
 function ensPush(){if(ensExpired)return;markDirty();clearTimeout(ensT);ensT=setTimeout(async()=>{const d0=dirty,mp={};db.notes.forEach(n=>{mp[[n.e,n.m,n.p].map(x=>encodeURIComponent(x).replace(/\./g,"%2E")).join("~")]={e:n.e,m:n.m,p:n.p,i1:n.i1,i2:n.i2,dv:n.dv,cp:n.cp}});try{
-      if(!(await ensLinkIsCurrent())){ensExpired=true;clearTimeout(ensT);ensMsg("Lien invalide : l’administration a généré un nouveau lien. Vos notes ne seront pas envoyées. Demandez le lien actuel.");return}
+      if(!(await ensLinkIsCurrent())){ensExpired=true;clearTimeout(ensT);ensMsg("Lien expiré ou remplacé : la période de saisie est terminée, ou l’administration a généré un nouveau lien. Vos notes ne seront pas envoyées. Demandez le lien actuel.");return}
       await syPatch("notes",mp);markClean(d0);ensMsg("Notes envoyées à l’administration.")
     }catch(e){netBar();ensMsg("Impossible de vérifier le lien ou d’envoyer les notes. Vérifiez la connexion ; aucune note n’a été envoyée.")}},500)}
 async function ensLoad(){ensBusy=true;try{
-  if(!(await ensLinkIsCurrent())){ensExpired=true;ensErr="Lien invalide : l’administration a généré un nouveau lien. Demandez le lien actuel.";ensMsg(ensErr);ensBusy=false;render();return}
+  if(!(await ensLinkIsCurrent())){ensExpired=true;ensErr="Lien expiré ou remplacé : la période de saisie est terminée, ou l’administration a généré un nouveau lien. Demandez le lien actuel.";ensMsg(ensErr);ensBusy=false;render();return}
   const d=await syGet("ref");if(d){db.classes=d.classes||[];db.matieres=d.matieres||[];db.eleves=d.eleves||[];db.profs=d.profs||[];db.etab=Object.assign(etabDef(),d.etab||{})}save()}catch(e){{const mm=String((e&&e.message)||"");ensErr=/^(clair|ancien)$/.test(mm)?"Données non chiffrées refusées pour votre sécurité. Demandez un nouveau lien à l’administration.":/absente|invalide/.test(mm)?"Lien incomplet : demandez à l’administration de vous renvoyer le lien complet.":"Impossible de charger les listes ("+(mm||"connexion")+").";}ensMsg(ensErr)}ensBusy=false;render()}
 function renderSync(L){
   const S=db.sync=db.sync||{url:DB_URL,key:""};if(DB_URL)S.url=DB_URL;
@@ -1387,8 +1387,8 @@ function renderSync(L){
   $("#sy_l").onclick=async()=>{if(!requireLicensedOutput("la création du lien enseignant"))return;if(!rd())return m(NO);if(!await needKt())return m(NOKT);m("Envoi des listes…");try{
       await syncRef();
       const g=Array.from(crypto.getRandomValues(new Uint8Array(24)),b=>b.toString(16).padStart(2,"0")).join("");
-      await syPut("teacherLink",{token:g,created:Date.now()});
-      const o=$("#sy_o");o.value=(APP_URL?APP_URL.replace(/\/$/,"")+"/":location.href.split("#")[0].split("?")[0])+"?ens="+encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify({k:S.key,g})))))+"#"+window.licKt();o.style.display="";o.select();$("#sy_sh").style.display="";m(/claude/i.test(location.hostname)&&!APP_URL?"Ce lien ne marchera qu’une fois l’application hébergée sur votre site : générez-le depuis votre adresse finale.":"Lien prêt : touchez « Partager le lien » ou copiez-le.")}catch(e){return m("Impossible de créer le lien. Vérifiez la connexion et les règles de la base Firebase.")}};
+      const created=Date.now(),exp=created+7*864e5;await syPut("teacherLink",{token:g,created,exp});
+      const o=$("#sy_o");o.value=(APP_URL?APP_URL.replace(/\/$/,"")+"/":location.href.split("#")[0].split("?")[0])+"?ens="+encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify({k:S.key,g})))))+"#"+window.licKt();o.style.display="";o.select();$("#sy_sh").style.display="";m(/claude/i.test(location.hostname)&&!APP_URL?"Ce lien ne marchera qu’une fois l’application hébergée sur votre site : générez-le depuis votre adresse finale.":"Lien prêt, valable 7 jours (jusqu’au "+new Date(exp).toLocaleDateString("fr-FR")+"). Touchez « Partager le lien » ou copiez-le.")}catch(e){return m("Impossible de créer le lien. Vérifiez la connexion et les règles de la base Firebase.")}};
   $("#sy_sh").onclick=async()=>{
     const o=$("#sy_o"),u=o.value;let ok=false;
     const sel=()=>{try{o.focus();o.select();o.setSelectionRange(0,u.length)}catch(e){}};
