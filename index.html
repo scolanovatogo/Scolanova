@@ -316,7 +316,7 @@ window.XLSX={
 <script>
 /* ADRESSES À RÉGLER UNE FOIS PAR LE DÉVELOPPEUR : APP_URL = page en ligne ouverte par les enseignants ; DB_URL = adresse Firebase Realtime Database */
 const APP_URL="https://scolanovatogo.github.io/Scolanova",DB_URL="https://scolanova-905c6-default-rtdb.europe-west1.firebasedatabase.app";
-const TOK=((location.hash.match(/^#ens=(.+)/)||location.search.match(/[?&]ens=([^&#]+)/)||[])[1])||"",ENS=!!TOK,LS=ENS?"scolanova-ens":"scolanova-proto-v2";
+const TOK=((location.hash.match(/^#ens=(.+)/)||location.search.match(/[?&]ens=([^&#]+)/)||[])[1])||"",ENS=!!TOK,LS=ENS?"scolanova-ens":"scolanova-proto-v2",KTH=(location.hash.match(/^#([0-9a-f]{64})$/i)||[])[1]||"";
 const NIV=["6e","5e","4e","3e","Seconde A","Seconde C","Seconde D","Seconde S","Première A","Première C","Première D","Terminale A","Terminale C","Terminale D"];
 const CAT=["Français","Anglais","Maths","Histoire-Géographie","SVT","PCT","EPS","ECM","Philosophie","Allemand","Espagnol","Informatique","Dessin","Agriculture","Enseignement ménager","EWE"];
 const $=s=>document.querySelector(s);
@@ -1194,14 +1194,49 @@ async function delBatch(rows){
 function fromHex(h){return Uint8Array.from(String(h||"").match(/.{2}/g)||[],x=>parseInt(x,16))}
 function toB64(u){let out="";for(let i=0;i<u.length;i+=0x8000)out+=String.fromCharCode(...u.subarray(i,i+0x8000));return btoa(out)}
 function fromB64(b){return Uint8Array.from(atob(b),c=>c.charCodeAt(0))}
-const syUrl=p=>String((db.sync||{}).url||"").replace(/\/+$/g,"")+"/ecoles/"+(db.sync||{}).key+"/"+p+".json";
-let syCachedSecret="",syCachedKey=null;
-async function syKey(){const secret=String((db.sync||{}).key||"");if(!secret)throw new Error("Clé de synchronisation absente.");if(secret!==syCachedSecret){syCachedSecret=secret;syCachedKey=(async()=>{const base=await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),"PBKDF2",false,["deriveKey"]);return crypto.subtle.deriveKey({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode("scolanova-remote-data-v1"),iterations:100000},base,{name:"AES-GCM",length:256},false,["encrypt","decrypt"])})()}return syCachedKey}
-async function sySeal(value){const key=await syKey(),iv=crypto.getRandomValues(new Uint8Array(12)),data=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,new TextEncoder().encode(JSON.stringify(value)));return{_enc:1,iv:toB64(iv),data:toB64(new Uint8Array(data))}}
-async function syOpen(value){if(!value||value._enc!==1)return value;const key=await syKey();try{return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:fromB64(value.iv)},key,fromB64(value.data))))}catch(e){throw new Error("Impossible de déchiffrer les données de synchronisation.")}}
-async function syPut(p,d){const r=await fetch(syUrl(p),{method:"PUT",body:JSON.stringify(await sySeal(d))});if(!r.ok)throw new Error(r.status);return r.json()}
-async function syPatch(p,d){const out={};for(const [k,v] of Object.entries(d||{}))out[k]=await sySeal(v);const r=await fetch(syUrl(p),{method:"PATCH",body:JSON.stringify(out)});if(!r.ok)throw new Error(r.status);return r.json()}
-async function syGet(p){const r=await fetch(syUrl(p));if(!r.ok)throw new Error(r.status);const v=await r.json();if(v&&v._enc===1)return syOpen(v);if(v&&typeof v==="object"&&!Array.isArray(v)){const out={};for(const [k,x] of Object.entries(v))out[k]=x&&x._enc===1?await syOpen(x):x;return out}return v}
+/*SY-BEGIN*/
+/* Canal enseignants : l’adresse de la base est TOUJOURS celle du logiciel (DB_URL), jamais une adresse lue dans un lien, une sauvegarde ou des données enregistrées.
+   Les données sont chiffrées avec une clé enseignant (kt) SÉPARÉE de la clé qui sert d’adresse dans la base, et liées à leur emplacement (données authentifiées AAD). */
+let ENS_KT="",notesBad=0,notesOld=0,notesOldKeys=[],syKtCache={k:"",p:null},syLegacyCache={k:"",p:null};
+const NOTES_FLAG="scolanova-notes-chiffrees";
+const syUrl=p=>{const key=String((db.sync||{}).key||"");if(!/^[A-Za-z0-9_-]{16,64}$/.test(key))throw new Error("Clé de synchronisation invalide.");if(!/^https:\/\//.test(String(DB_URL||"")))throw new Error("Adresse de la base absente.");return String(DB_URL).replace(/\/+$/g,"")+"/ecoles/"+key+"/"+p+".json"};
+const syKtNow=()=>{if(ENS)return String(ENS_KT||"");return String((window.licKt&&window.licKt())||"")};
+async function syKtKey(){const kt=syKtNow();if(!/^[0-9a-f]{64}$/i.test(kt))throw new Error("Clé de chiffrement des enseignants absente.");if(syKtCache.k!==kt)syKtCache={k:kt,p:crypto.subtle.importKey("raw",fromHex(kt),{name:"AES-GCM"},false,["encrypt","decrypt"])};return syKtCache.p}
+async function sySeal(value,aad){const key=await syKtKey(),iv=crypto.getRandomValues(new Uint8Array(12)),data=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:new TextEncoder().encode(aad)},key,new TextEncoder().encode(JSON.stringify(value)));return{_enc:2,iv:toB64(iv),data:toB64(new Uint8Array(data))}}
+async function syOpen(v,aad){if(!v||typeof v!=="object"||v._enc!==2||typeof v.iv!=="string"||typeof v.data!=="string")throw new Error("clair");const key=await syKtKey();try{return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:fromB64(v.iv),additionalData:new TextEncoder().encode(aad)},key,fromB64(v.data))))}catch(e){throw new Error("Impossible de déchiffrer les données de synchronisation.")}}
+/* anciennes notes (avant la migration) : clé dérivée de l’adresse, sans AAD — lues une seule fois puis effacées du serveur */
+async function syLegacyOpen(v){const secret=String((db.sync||{}).key||"");if(syLegacyCache.k!==secret)syLegacyCache={k:secret,p:(async()=>{const b=await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),"PBKDF2",false,["deriveKey"]);return crypto.subtle.deriveKey({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode("scolanova-remote-data-v1"),iterations:100000},b,{name:"AES-GCM",length:256},false,["decrypt"])})()};const key=await syLegacyCache.p;return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:fromB64(v.iv)},key,fromB64(v.data))))}
+async function syPut(p,d){const r=await fetch(syUrl(p),{method:"PUT",body:JSON.stringify(await sySeal(d,p))});if(!r.ok)throw new Error(r.status);return r.json()}
+async function syPatch(p,d){const out={};for(const [k,v] of Object.entries(d||{}))out[k]=await sySeal(v,p+"/"+k);const r=await fetch(syUrl(p),{method:"PATCH",body:JSON.stringify(out)});if(!r.ok)throw new Error(r.status);return r.json()}
+/* document unique (listes, lien enseignant) : refusé s’il n’est pas chiffré avec la bonne clé et pour CET emplacement */
+async function syGet(p){const r=await fetch(syUrl(p));if(!r.ok)throw new Error(r.status);const v=await r.json();if(v===null||v===undefined)return null;return syOpen(v,p)}
+const notesMigrated=()=>{try{return localStorage.getItem(NOTES_FLAG)==="1"}catch(e){return false}};
+const noteKeyOf=n=>[n.e,n.m,n.p].map(x=>encodeURIComponent(x).replace(/\./g,"%2E")).join("~");
+const noteOk=(k,n)=>!!n&&typeof n==="object"&&n.e!=null&&typeof n.m==="string"&&typeof n.p==="string"&&noteKeyOf(n)===k;
+async function syNotes(){
+  notesBad=0;notesOld=0;notesOldKeys=[];
+  const r=await fetch(syUrl("notes"));if(!r.ok)throw new Error(r.status);const v=await r.json(),out={};
+  if(!v||typeof v!=="object"||Array.isArray(v))return out;
+  const done=notesMigrated();
+  for(const [k,x] of Object.entries(v)){
+    try{
+      if(!x||typeof x!=="object")throw 0;
+      let val;
+      if(x._enc===2)val=await syOpen(x,"notes/"+k);
+      else if(done)throw 0;
+      else if(x._enc===1){val=await syLegacyOpen(x);notesOld++;notesOldKeys.push(k)}
+      else{val=x;notesOld++;notesOldKeys.push(k)}
+      if(!noteOk(k,val))throw 0;
+      out[k]=val;
+    }catch(e){notesBad++}
+  }
+  return out}
+/* à appeler APRÈS avoir enregistré les notes lues : efface du serveur les anciennes notes, puis n’accepte plus que des notes chiffrées et liées à leur emplacement */
+async function notesCleanup(){
+  if(notesMigrated())return;
+  if(notesOldKeys.length){const b={};notesOldKeys.forEach(k=>{b[k]=null});const r=await fetch(syUrl("notes"),{method:"PATCH",body:JSON.stringify(b)});if(!r.ok)throw new Error(r.status)}
+  notesOldKeys=[];try{localStorage.setItem(NOTES_FLAG,"1")}catch(e){}}
+/*SY-END*/
 async function ensLinkIsCurrent(){
   if(!ENS||!ensGeneration)return false;
   const active=await syGet("teacherLink");
@@ -1222,7 +1257,7 @@ function netBar(flash,ftxt){
   if(!txt){if(b)b.remove();return}
   if(!b){b=document.createElement("div");b.id="net_bar";b.setAttribute("role","status");document.body.insertBefore(b,document.body.firstChild)}
   b.style.cssText="position:sticky;top:0;z-index:20;padding:8px 14px;font:13px/1.35 system-ui,sans-serif;color:#1f2a44;border-bottom:1px solid rgba(0,0,0,.12);background:"+bg;b.textContent=txt}
-const adminSync=()=>!ENS&&db&&db.sync&&db.sync.key&&DB_URL&&window.licOK&&window.licOK();
+const adminSync=()=>!ENS&&db&&db.sync&&db.sync.key&&DB_URL&&window.licOK&&window.licOK()&&window.licKt&&!!window.licKt();
 async function flushRef(){
   if(!adminSync())return;if(navigator.onLine===false){netBar();return}
   const d0=dirty;try{await syncRef();markClean(d0)}catch(e){netBar()}}
@@ -1253,7 +1288,7 @@ async function dsPack(){
   return{enc:1,z,iv:toB64(iv),d:toB64(new Uint8Array(cipher))}}
 async function dsUnpack(o){
   if(!o||typeof o.d!=="string")throw new Error("vide");
-  if(o.enc){const ek=await window.licEncKey();if(!ek)throw new Error("Mot de passe requis pour déchiffrer les données.");const key=await crypto.subtle.importKey("raw",fromHex(ek),{name:"AES-GCM"},false,["decrypt"]);let bytes;try{bytes=new Uint8Array(await crypto.subtle.decrypt({name:"AES-GCM",iv:fromB64(o.iv)},key,fromB64(o.d)))}catch(e){throw new Error("Impossible de déchiffrer les données : vérifiez le mot de passe.")};if(o.z){if(!window.DecompressionStream)throw new Error("navigateur");bytes=new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer())}return JSON.parse(new TextDecoder().decode(bytes))}
+  if(o.enc){const ek=await window.licEncKey();if(!ek)throw new Error("Mot de passe requis pour déchiffrer les données.");let bytes=null;const old=window.licEncKeyOld?await window.licEncKeyOld():"";for(const hk of [ek,old]){if(!hk||bytes)continue;try{const key=await crypto.subtle.importKey("raw",fromHex(hk),{name:"AES-GCM"},false,["decrypt"]);bytes=new Uint8Array(await crypto.subtle.decrypt({name:"AES-GCM",iv:fromB64(o.iv)},key,fromB64(o.d)))}catch(e){}}if(!bytes)throw new Error("Impossible de déchiffrer les données : vérifiez le mot de passe.");if(o.z){if(!window.DecompressionStream)throw new Error("navigateur");bytes=new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer())}return JSON.parse(new TextDecoder().decode(bytes))}
   /* Compatibilité : les anciennes sauvegardes en clair restent lisibles, mais les prochaines synchronisations seront chiffrées. */
   if(!o.z)return JSON.parse(o.d);if(!window.DecompressionStream)throw new Error("navigateur");
   const bin=atob(o.d),u=Uint8Array.from(bin,ch=>ch.charCodeAt(0));return JSON.parse(await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream("gzip"))).text())}
@@ -1292,14 +1327,14 @@ function dsKick(){dsAsked=false;dsRun()}
 window.dsKick=dsKick;
 function dsStatus(){
   if(!(window.licOK&&window.licOK()))return"Accès non activé : synchronisation indisponible.";
-  if(!window.licKd())return"Saisissez votre mot de passe pour activer la synchronisation entre appareils.";
+  if(!(window.licKd()&&window.licKt()))return"Saisissez votre mot de passe pour activer la synchronisation entre appareils.";
   const S=dsGet(),h=S.last?new Date(S.last).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):"";
   return(navigator.onLine===false?"Hors connexion · ":"")+(dsErr?"⚠ "+dsErr+" · ":"")+(S.dirty?"modifications en attente d’envoi.":h?"à jour (dernière synchronisation à "+h+").":"pas encore synchronisé.")}
 /* demande le mot de passe une fois (il ne sert qu'à calculer la clé, il n'est pas conservé) */
 function dsAskKd(force){return new Promise(res=>{
-  if(ENS||!(window.licOK&&window.licOK())||window.licKd()||(dsKdAsked&&!force)||navigator.onLine===false)return res(false);dsKdAsked=true;
+  if(ENS||!(window.licOK&&window.licOK())||(window.licKd()&&window.licKt())||(dsKdAsked&&!force)||navigator.onLine===false)return res(false);dsKdAsked=true;
   const d=document.createElement("dialog");d.style.cssText="max-width:360px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:18px";
-  d.innerHTML=`<p style="margin:0 0 8px"><b>Synchronisation entre appareils</b></p><p class="s" style="margin:0 0 10px">Pour retrouver vos données sur tous vos appareils, saisissez une fois le mot de passe de votre accès ScolaNova.</p><input id="dk_p" autocapitalize="characters" autocomplete="off" placeholder="Mot de passe" style="width:100%"><div class="err" id="dk_e" role="alert" style="min-height:1.2em"></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button type="button" class="btnline" id="dk_n">Plus tard</button><button type="button" class="btnline" id="dk_y" style="background:var(--accent);color:var(--on-accent)">Activer</button></div>`;
+  d.innerHTML=`<p style="margin:0 0 8px"><b>Synchronisation entre appareils</b></p><p class="s" style="margin:0 0 10px">Pour retrouver vos données sur tous vos appareils, saisissez une fois le mot de passe de votre accès ScolaNova.</p><input id="dk_p" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" placeholder="Mot de passe" style="width:100%"><div class="err" id="dk_e" role="alert" style="min-height:1.2em"></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button type="button" class="btnline" id="dk_n">Plus tard</button><button type="button" class="btnline" id="dk_y" style="background:var(--accent);color:var(--on-accent)">Activer</button></div>`;
   document.body.appendChild(d);const f=v=>{d.close();d.remove();res(v)};
   d.querySelector("#dk_n").onclick=()=>f(false);d.oncancel=()=>f(false);
   d.querySelector("#dk_y").onclick=async()=>{const e=d.querySelector("#dk_e");e.textContent="Vérification…";try{await window.licSetKd(d.querySelector("#dk_p").value);f(true);dsKick()}catch(x){e.textContent=typeof x==="string"?x:"Une erreur est survenue. Réessayez."}};
@@ -1307,7 +1342,7 @@ function dsAskKd(force){return new Promise(res=>{
 function renderDbSync(L){
   L.insertAdjacentHTML("beforeend",`<li class="bul" style="padding:14px 16px;margin-top:10px"><b>Synchronisation entre appareils</b><div class="s">Vos classes, élèves, professeurs, notes et emplois du temps sont gardés sur le serveur et retrouvés sur tout autre appareil activé avec le même accès. Le travail fait hors connexion est envoyé automatiquement au retour du réseau.</div><div class="s" id="ds_st" role="status" style="padding-top:6px"></div><div style="display:grid;gap:8px;margin-top:8px"><button type="button" class="btnline" id="ds_now">Synchroniser maintenant</button><button type="button" class="btnline" id="ds_up">Envoyer ce téléphone vers le serveur</button><button type="button" class="btnline" id="ds_down">Récupérer les données du serveur</button></div></li>`);
   const st=$("#ds_st"),show=()=>{st.textContent=dsStatus()};show();
-  const need=async()=>{if(!(window.licOK&&window.licOK())){window.licShow();return false}if(!window.licKd()){const ok=await dsAskKd(true);show();return ok}return true};
+  const need=async()=>{if(!(window.licOK&&window.licOK())){window.licShow();return false}if(!(window.licKd()&&window.licKt())){const ok=await dsAskKd(true);show();return ok}return true};
   $("#ds_now").onclick=async()=>{if(!await need())return;dsAsked=false;st.textContent="Synchronisation…";await dsRun();show()};
   $("#ds_up").onclick=async()=>{if(!await need())return;if(!await confirmUI("Remplacer les données du serveur par celles de ce téléphone ?","Envoyer"))return;st.textContent="Envoi…";await dsRun("push");show()};
   $("#ds_down").onclick=async()=>{if(!await need())return;if(!await confirmUI("Remplacer les données de ce téléphone par celles du serveur ? Une sauvegarde de ce téléphone est téléchargée avant.","Récupérer"))return;dsBackup();st.textContent="Récupération…";await dsRun("pull");show()}}
@@ -1317,15 +1352,17 @@ function startSyncRetry(){
   document.addEventListener("visibilitychange",()=>{if(!document.hidden){syncNow();dsRun()}});
   setInterval(()=>{syncNow();if(!document.hidden)dsRun()},30000);netBar();syncNow();setTimeout(()=>{dsRun();dsAskKd()},2500)}
 async function pullNotes(){
-  const d=(await syGet("notes"))||{};db.seen=db.seen||{};let n=0;
+  const d=await syNotes();db.seen=db.seen||{};let n=0;
   Object.keys(d).forEach(k=>{const x=d[k];if(!x||x.e==null)return;const sig=JSON.stringify([x.i1,x.i2,x.dv,x.cp]);if(db.seen[k]===sig)return;
     let r=getN(x.e,x.m,x.p);if(!r){r={e:x.e,m:x.m,p:x.p,i1:"",i2:"",dv:"",cp:""};db.notes.push(r)}
     ["i1","i2","dv","cp"].forEach(f=>{if(x[f]!==undefined&&x[f]!=="")r[f]=x[f]});db.seen[k]=sig;n++});
   if(n){dsApplying=true;try{save()}finally{dsApplying=false}if(!(tab==="notes"&&nst.d))render();setTimeout(()=>{const l=$("#lead");if(l)l.textContent=n+" note(s) reçue(s) des enseignants."},0)}
+  if(notesBad)setTimeout(()=>{const l=$("#lead");if(l)l.textContent=notesBad+" note(s) ignorée(s) : non chiffrées ou non conformes."},0);
+  try{await notesCleanup()}catch(e){}
   return n;
 }
 function startPull(){
-  if(ENS)return;const ok=()=>db&&db.sync&&db.sync.key&&DB_URL;
+  if(ENS)return;const ok=()=>db&&db.sync&&db.sync.key&&DB_URL&&window.licKt&&!!window.licKt();
   const go=()=>{if(ok()&&!document.hidden)pullNotes().catch(()=>{})};
   setInterval(go,20000);document.addEventListener("visibilitychange",go);go();
 }
@@ -1338,20 +1375,20 @@ function ensPush(){if(ensExpired)return;markDirty();clearTimeout(ensT);ensT=setT
     }catch(e){netBar();ensMsg("Impossible de vérifier le lien ou d’envoyer les notes. Vérifiez la connexion ; aucune note n’a été envoyée.")}},500)}
 async function ensLoad(){ensBusy=true;try{
   if(!(await ensLinkIsCurrent())){ensExpired=true;ensErr="Lien invalide : l’administration a généré un nouveau lien. Demandez le lien actuel.";ensMsg(ensErr);ensBusy=false;render();return}
-  const d=await syGet("ref");if(d){db.classes=d.classes||[];db.matieres=d.matieres||[];db.eleves=d.eleves||[];db.profs=d.profs||[];db.etab=Object.assign(etabDef(),d.etab||{})}save()}catch(e){ensErr="Impossible de charger les listes ("+((e&&e.message)||"connexion")+").";ensMsg(ensErr)}ensBusy=false;render()}
+  const d=await syGet("ref");if(d){db.classes=d.classes||[];db.matieres=d.matieres||[];db.eleves=d.eleves||[];db.profs=d.profs||[];db.etab=Object.assign(etabDef(),d.etab||{})}save()}catch(e){{const mm=String((e&&e.message)||"");ensErr=/^(clair|ancien)$/.test(mm)?"Données non chiffrées refusées pour votre sécurité. Demandez un nouveau lien à l’administration.":/absente|invalide/.test(mm)?"Lien incomplet : demandez à l’administration de vous renvoyer le lien complet.":"Impossible de charger les listes ("+(mm||"connexion")+").";}ensMsg(ensErr)}ensBusy=false;render()}
 function renderSync(L){
   const S=db.sync=db.sync||{url:DB_URL,key:""};if(DB_URL)S.url=DB_URL;
   if(!ENS)renderDbSync(L);
-  L.insertAdjacentHTML("beforeend",`<li class="bul" style="padding:14px 16px;margin-top:10px"><b>Saisie des notes à distance</b><div class="s">Les enseignants reçoivent un lien qui ne contient que l’onglet des notes. Il faut une base en ligne (Firebase Realtime Database) et l’application hébergée sur votre site.</div><label>Adresse de la base</label><input id="sy_u" value="${esc(S.url)}" placeholder="https://mon-ecole-default-rtdb.firebaseio.com"><label>Clé de l’établissement (secrète)</label><div style="display:flex;gap:6px"><input id="sy_k" value="${esc(S.key)}" style="flex:1"><button type="button" class="btnline" id="sy_g">Générer</button></div><div style="display:grid;gap:8px;margin-top:10px"><button type="button" class="btnline" id="sy_s">Envoyer les listes aux enseignants</button><button type="button" class="btnline" id="sy_r">Récupérer les notes saisies</button><button type="button" class="btnline" id="sy_l">Afficher le lien enseignant</button></div><input id="sy_o" readonly style="margin-top:8px;display:none"><button type="button" class="btnline" id="sy_sh" style="display:none;margin-top:8px">Partager le lien</button><div class="s" id="sy_m" role="status" style="padding-top:6px"></div></li>`);
-  const m=t=>{const e=$("#sy_m");e.textContent=t;e.scrollIntoView({block:"nearest"})},rd=()=>{if(!window.licOK()){window.licShow();return false}S.url=$("#sy_u").value.trim();S.key=$("#sy_k").value.trim();save();return S.url&&S.key&&S.key.length>=20},NO="Renseignez l’adresse de la base et une clé d’au moins 20 caractères (touchez « Générer »).";
+  L.insertAdjacentHTML("beforeend",`<li class="bul" style="padding:14px 16px;margin-top:10px"><b>Saisie des notes à distance</b><div class="s">Les enseignants reçoivent un lien qui ne contient que l’onglet des notes. Il faut une base en ligne (Firebase Realtime Database) et l’application hébergée sur votre site.</div><label>Adresse de la base (imposée par le logiciel)</label><input id="sy_u" value="${esc(DB_URL)}" readonly><label>Clé de l’établissement (secrète)</label><div style="display:flex;gap:6px"><input id="sy_k" value="${esc(S.key)}" style="flex:1"><button type="button" class="btnline" id="sy_g">Générer</button></div><div style="display:grid;gap:8px;margin-top:10px"><button type="button" class="btnline" id="sy_s">Envoyer les listes aux enseignants</button><button type="button" class="btnline" id="sy_r">Récupérer les notes saisies</button><button type="button" class="btnline" id="sy_l">Afficher le lien enseignant</button></div><input id="sy_o" readonly style="margin-top:8px;display:none"><button type="button" class="btnline" id="sy_sh" style="display:none;margin-top:8px">Partager le lien</button><div class="s" id="sy_m" role="status" style="padding-top:6px"></div></li>`);
+  const m=t=>{const e=$("#sy_m");e.textContent=t;e.scrollIntoView({block:"nearest"})},rd=()=>{if(!window.licOK()){window.licShow();return false}S.url=DB_URL;S.key=$("#sy_k").value.trim();save();return !!DB_URL&&/^[A-Za-z0-9_-]{20,64}$/.test(S.key)},NO="Renseignez une clé d’au moins 20 caractères (lettres et chiffres uniquement ; touchez « Générer »).",NOKT="Saisissez de nouveau le mot de passe de votre accès pour activer le chiffrement des échanges avec les enseignants.",needKt=async()=>{if(window.licKt&&window.licKt())return true;await dsAskKd(true);return !!(window.licKt&&window.licKt())};
   $("#sy_g").onclick=()=>{$("#sy_k").value=Array.from(crypto.getRandomValues(new Uint8Array(12)),b=>b.toString(36).padStart(2,"0")).join("");rd()};
-  $("#sy_s").onclick=async()=>{if(!requireLicensedOutput("la synchronisation avec les enseignants"))return;if(!rd())return m(NO);m("Envoi…");try{await syPut("ref",{etab:{nom:db.etab.nom},classes:db.classes.map(c=>({id:c.id,classe:c.classe,niveau:c.niveau,cycle:c.cycle})),matieres:db.matieres.map(x=>({id:x.id,matiere:x.matiere,niveau:x.niveau,coef:x.coef,vol:x.vol})),eleves:db.eleves.map(e=>({id:e.id,nom:e.nom,prenom:e.prenom,sexe:e.sexe,classe:e.classe})),profs:db.profs.map(q=>({id:q.id,nom:q.nom,fam:q.fam,pre:q.pre,ens:q.ens||[],titulaire:q.titulaire||""})),t:Date.now()});m("Listes envoyées : "+db.eleves.length+" élèves, "+db.classes.length+" classes, "+db.matieres.length+" matières, "+db.profs.length+" professeurs.")}catch(e){m("Échec de l’envoi. Cela ne marche que si l’application est hébergée sur votre site et si la base autorise l’accès.")}};
-  $("#sy_r").onclick=async()=>{if(!requireLicensedOutput("la récupération des notes à distance"))return;if(!rd())return m(NO);m("Récupération…");try{const n=await pullNotes();m(n+" nouvelle(s) note(s) récupérée(s).")}catch(e){m("Échec de la récupération. Vérifiez la connexion.")}};
-  $("#sy_l").onclick=async()=>{if(!requireLicensedOutput("la création du lien enseignant"))return;if(!rd())return m(NO);m("Envoi des listes…");try{
+  $("#sy_s").onclick=async()=>{if(!requireLicensedOutput("la synchronisation avec les enseignants"))return;if(!rd())return m(NO);if(!await needKt())return m(NOKT);m("Envoi…");try{await syPut("ref",{etab:{nom:db.etab.nom},classes:db.classes.map(c=>({id:c.id,classe:c.classe,niveau:c.niveau,cycle:c.cycle})),matieres:db.matieres.map(x=>({id:x.id,matiere:x.matiere,niveau:x.niveau,coef:x.coef,vol:x.vol})),eleves:db.eleves.map(e=>({id:e.id,nom:e.nom,prenom:e.prenom,sexe:e.sexe,classe:e.classe})),profs:db.profs.map(q=>({id:q.id,nom:q.nom,fam:q.fam,pre:q.pre,ens:q.ens||[],titulaire:q.titulaire||""})),t:Date.now()});m("Listes envoyées : "+db.eleves.length+" élèves, "+db.classes.length+" classes, "+db.matieres.length+" matières, "+db.profs.length+" professeurs.")}catch(e){m("Échec de l’envoi. Cela ne marche que si l’application est hébergée sur votre site et si la base autorise l’accès.")}};
+  $("#sy_r").onclick=async()=>{if(!requireLicensedOutput("la récupération des notes à distance"))return;if(!rd())return m(NO);if(!await needKt())return m(NOKT);m("Récupération…");try{const n=await pullNotes();m(n+" nouvelle(s) note(s) récupérée(s).")}catch(e){m("Échec de la récupération. Vérifiez la connexion.")}};
+  $("#sy_l").onclick=async()=>{if(!requireLicensedOutput("la création du lien enseignant"))return;if(!rd())return m(NO);if(!await needKt())return m(NOKT);m("Envoi des listes…");try{
       await syncRef();
       const g=Array.from(crypto.getRandomValues(new Uint8Array(24)),b=>b.toString(16).padStart(2,"0")).join("");
       await syPut("teacherLink",{token:g,created:Date.now()});
-      const o=$("#sy_o");o.value=(APP_URL?APP_URL.replace(/\/$/,"")+"/":location.href.split("#")[0].split("?")[0])+"?ens="+encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify({u:S.url,k:S.key,g})))));o.style.display="";o.select();$("#sy_sh").style.display="";m(/claude/i.test(location.hostname)&&!APP_URL?"Ce lien ne marchera qu’une fois l’application hébergée sur votre site : générez-le depuis votre adresse finale.":"Lien prêt : touchez « Partager le lien » ou copiez-le.")}catch(e){return m("Impossible de créer le lien. Vérifiez la connexion et les règles de la base Firebase.")}};
+      const o=$("#sy_o");o.value=(APP_URL?APP_URL.replace(/\/$/,"")+"/":location.href.split("#")[0].split("?")[0])+"?ens="+encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify({k:S.key,g})))))+"#"+window.licKt();o.style.display="";o.select();$("#sy_sh").style.display="";m(/claude/i.test(location.hostname)&&!APP_URL?"Ce lien ne marchera qu’une fois l’application hébergée sur votre site : générez-le depuis votre adresse finale.":"Lien prêt : touchez « Partager le lien » ou copiez-le.")}catch(e){return m("Impossible de créer le lien. Vérifiez la connexion et les règles de la base Firebase.")}};
   $("#sy_sh").onclick=async()=>{
     const o=$("#sy_o"),u=o.value;let ok=false;
     const sel=()=>{try{o.focus();o.select();o.setSelectionRange(0,u.length)}catch(e){}};
@@ -1930,7 +1967,7 @@ $("#nav").onclick=e=>{const b=e.target.closest("button");if(b){const dest=b.data
 
 db=ENS?(()=>{try{const r=localStorage.getItem(LS);if(r)return JSON.parse(r)}catch(e){}return{classes:[],matieres:[],profs:[],eleves:[],notes:[],seq:1,etab:etabDef()}})():load();db.notes=db.notes||[];db.exams=db.exams||[];db.edt=db.edt||{refus:{},apm:{},jum:false,res:null};db.nat=db.nat||{};db.etab=db.etab||etabDef();
 if(!ENS)initialiserMatriculesExistants();
-if(ENS){document.body.classList.add("ens");ORDER.splice(0,ORDER.length,"notes");tab="notes";try{const c=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(TOK)))));db.sync={url:c.u,key:c.k};ensGeneration=String(c.g||"")}catch(e){}render();ensLoad()}else render();
+if(ENS){document.body.classList.add("ens");ORDER.splice(0,ORDER.length,"notes");tab="notes";try{const c=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(TOK)))));db.sync={url:DB_URL,key:String(c.k||"")};ensGeneration=String(c.g||"");ENS_KT=KTH||(()=>{try{return localStorage.getItem("scolanova-ens-kt")||""}catch(e){return ""}})();try{if(KTH)localStorage.setItem("scolanova-ens-kt",KTH)}catch(e){}}catch(e){}render();ensLoad()}else render();
 window.LOGOJ=window.LOGOJ||{};
 function prepLogo(){const l=db&&db.etab&&db.etab.logo;if(!l||/^data:image\/jpe?g/i.test(l)||window.LOGOJ[l])return;const im=new Image();im.onload=()=>{const c=document.createElement("canvas");c.width=im.width;c.height=im.height;const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,c.width,c.height);g.drawImage(im,0,0);window.LOGOJ[l]=c.toDataURL("image/jpeg",.92)};im.src=l}
 prepLogo();
@@ -1957,7 +1994,46 @@ prepLogo();
   const fromHex=h=>Uint8Array.from(String(h||"").match(/.{2}/g)||[],x=>parseInt(x,16));
   const toB64=u=>{let out="";for(let i=0;i<u.length;i+=0x8000)out+=String.fromCharCode(...u.subarray(i,i+0x8000));return btoa(out)};
   const fromB64=b=>Uint8Array.from(atob(b),c=>c.charCodeAt(0));
-  async function pbk(pw,salt,bits){const k=await crypto.subtle.importKey("raw",new TextEncoder().encode(pw),"PBKDF2",false,["deriveBits"]);return hex(await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(salt),iterations:100000},k,bits))}
+  async function pbk(pw,salt,bits,it){const k=await crypto.subtle.importKey("raw",new TextEncoder().encode(pw),"PBKDF2",false,["deriveBits"]);return hex(await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(salt),iterations:it||100000},k,bits))}
+/*LICX-BEGIN*/
+/* Accès v3 : mot de passe sensible à la casse, calcul lent (600 000 itérations), clés toutes distinctes.
+   h = empreinte publique ; les autres clés viennent d’un second calcul indépendant (salt « :m ») : l’empreinte publique ne permet pas de les retrouver. */
+const ITER_V3=600000;
+async function hmacHex(mHex,label){const k=await crypto.subtle.importKey("raw",fromHex(mHex),{name:"HMAC",hash:"SHA-256"},false,["sign"]);return hex(await crypto.subtle.sign("HMAC",k,new TextEncoder().encode(label)))}
+const itOf=d=>(d&&Number.isInteger(d.it)&&d.it>=ITER_V3&&d.it<=3000000)?d.it:ITER_V3;
+async function derive(pw,d,h0){
+  const s=String(d.s);
+  if(d.v===3){const it=itOf(d),h=h0||await pbk(pw,s,256,it),m=await pbk(pw,s+":m",256,it);
+    return{h,ek:await hmacHex(m,"enc"),kt:await hmacHex(m,"kt"),kd:(await hmacHex(m,"d")).slice(0,24),k:(await hmacHex(m,"k")).slice(0,24)}}
+  /* v2 et anciens accès : mêmes valeurs qu’avant pour h, kd (chemin de synchro) et k ; la clé de chiffrement vient du mot de passe ; clé enseignant ajoutée */
+  return{h:h0||await pbk(pw,s,256),ek:await pbk(pw,s+":enc",256),kt:await pbk(pw,s+":kt",256),kd:(await pbk(pw,s+":d",144)).slice(0,24),k:(await pbk(pw,s+":k",144)).slice(0,24)}}
+function pwCands(d,typed){
+  const t=String(typed==null?"":typed),tr=t.trim(),out=[],add=x=>{if(x.length>=10&&!out.includes(x))out.push(x)};
+  if(d&&d.v===3){add(tr);add(tr.replace(/-/g,""))}
+  else if(d&&d.v===2){add(t);add(tr)}
+  else{add(normPwd(t));add(tr)}
+  return out}
+async function tryLogin(d,typed){
+  if(!d||typeof d.s!=="string"||!/^[0-9A-Za-z]{4,64}$/.test(d.s)||!/^[0-9a-f]{64}$/i.test(String(d.h||"")))return null;
+  const want=String(d.h).toLowerCase();
+  for(const c of pwCands(d,typed)){const h=await pbk(c,d.s,256,d.v===3?itOf(d):100000);if(h===want)return derive(c,d,h)}
+  return null}
+const PW_COMMUN=["azerty","qwerty","password","motdepasse","passw0rd","123456","000000","scolanova","bienvenue","admin"];
+const pwFold=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]/g,"");
+function pwdIssue(p,id,nom){
+  p=String(p==null?"":p);
+  if(p.length<10)return"Le mot de passe doit contenir au moins 10 caractères.";
+  const f=pwFold(p);
+  if(p.length<16&&[/[a-z]/,/[A-Z]/,/[0-9]/,/[^A-Za-z0-9]/].filter(r=>r.test(p)).length<3)return"Utilisez au moins 3 types de caractères (majuscules, minuscules, chiffres, symboles), ou une phrase de 16 caractères ou plus.";
+  if(/(.)\1\1/i.test(p))return"Évitez de répéter trois fois le même caractère.";
+  for(let i=0;i+4<=f.length;i++){let u=1,dn=1;for(let j=1;j<4;j++){const x=f.charCodeAt(i+j)-f.charCodeAt(i+j-1);if(x!==1)u=0;if(x!==-1)dn=0}if(u||dn)return"Évitez les suites comme 1234 ou abcd."}
+  if(PW_COMMUN.some(w=>f.includes(w)))return"Ce mot de passe est trop courant.";
+  for(const w of[id].concat(String(nom||"").split(/\s+/))){const x=pwFold(w);if(x.length>=4&&f.includes(x))return"Le mot de passe ne doit contenir ni l’identifiant ni le nom de l’établissement."}
+  return""}
+function genPwd(){const A="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  for(;;){let r="";while(r.length<16){for(const b of crypto.getRandomValues(new Uint8Array(32))){if(b<216&&r.length<16)r+=A[b%54]}}
+    if(/[a-z]/.test(r)&&/[A-Z]/.test(r)&&/[2-9]/.test(r)&&!pwdIssue(r,"",""))return r.match(/.{4}/g).join("-")}}
+/*LICX-END*/
   async function sealText(text,password,salt){const raw=fromHex(await pbk(password,salt,256)),key=await crypto.subtle.importKey("raw",raw,{name:"AES-GCM"},false,["encrypt"]),iv=crypto.getRandomValues(new Uint8Array(12)),data=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,new TextEncoder().encode(String(text)));return{iv:toB64(iv),data:toB64(new Uint8Array(data))}}
   const lic=id=>fetch(DB_URL+"/licences/"+encodeURIComponent(id)+".json");
   let bar=null,ov=null,asked=false;
@@ -1967,7 +2043,7 @@ prepLogo();
     close();document.body.classList.add("locked");ov=document.createElement("div");ov.id="lock";
     if(expired())msg=expMsg(get().x);
     ov.innerHTML=`<div class="lbox"><h2 style="margin:0 0 6px">Activer votre accès</h2><div class="s" style="margin-bottom:10px">${msg||"Pour enregistrer vos données, saisissez l’identifiant et le mot de passe remis par votre fournisseur ScolaNova. Pendant l’essai gratuit, vous pouvez saisir les classes, matières, professeurs, élèves et notes, puis consulter les bulletins à l’écran. Les statistiques et l’affichage des emplois du temps sont verrouillés ; l’export PDF et l’impression des bulletins sont désactivés. Une licence activée débloque ces fonctions."}</div>
-    <label>Identifiant</label><input id="lc_u" autocapitalize="off" autocomplete="off"><label>Mot de passe</label><input id="lc_p" autocapitalize="characters" autocomplete="off">
+    <label>Identifiant</label><input id="lc_u" autocapitalize="off" autocomplete="off"><label>Mot de passe</label><input id="lc_p" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off">
     <a href="https://wa.me/22890535045?text=Bonjour%2C%20je%20souhaite%20obtenir%20mon%20identifiant%20et%20mon%20mot%20de%20passe%20d%E2%80%99activation%20de%20ScolaNova." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:9px;margin:12px 0;padding:11px;border-radius:9px;background:#25D366;color:#fff;text-decoration:none;font-weight:700"><svg width="23" height="23" viewBox="0 0 32 32" aria-hidden="true" style="fill:currentColor"><path d="M16 .8A15 15 0 0 0 3.1 23.5L1 31l7.7-2A15.1 15.1 0 1 0 16 .8zm0 27.4a12.3 12.3 0 0 1-6.3-1.7l-.5-.3-4.6 1.2 1.2-4.5-.3-.5A12.4 12.4 0 1 1 16 28.2zm6.8-9.2c-.4-.2-2.1-1-2.5-1.1-.3-.1-.6-.2-.8.2-.3.4-.9 1.1-1.1 1.3-.2.3-.4.3-.8.1-.4-.2-1.5-.6-2.9-1.8-1.1-1-1.8-2.1-2-2.5-.2-.4 0-.6.2-.8l.6-.7c.2-.2.3-.4.4-.6.1-.2 0-.5 0-.7-.1-.2-.8-1.9-1.1-2.6-.3-.7-.6-.6-.8-.6h-.7c-.2 0-.7.1-1 .5-.4.4-1.3 1.3-1.3 3.1s1.3 3.6 1.5 3.8c.2.3 2.6 4 6.2 5.5.9.4 1.6.6 2.1.7.9.3 1.7.2 2.3.1.7-.1 2.1-.9 2.4-1.8.3-.9.3-1.7.2-1.8-.1-.2-.3-.3-.7-.5z"/></svg>Nous contacter sur WhatsApp</a>
     <div class="err" id="lc_e" role="alert"></div><div class="btns"><button type="button" id="lc_x">Plus tard</button>${get()?"":`<button type="button" id="lc_t">Créer un compte gratuitement</button>`}<button type="button" class="ok" id="lc_ok">Activer</button></div></div>`;
     document.body.appendChild(ov);const q=s=>ov.querySelector(s),e=m=>{q("#lc_e").textContent=m};
@@ -1982,13 +2058,13 @@ prepLogo();
         let r;try{r=await lic(id)}catch(x){throw"Connexion Internet requise pour la première activation."}
         if(!r.ok)throw"Vérification impossible (code "+r.status+"). Contactez votre fournisseur.";
         const d=await r.json();if(!d||d.actif===false)throw"Identifiant ou mot de passe incorrect, ou accès désactivé.";
-        const pw=d.v===2?enteredPw:normPwd(enteredPw);if(d.v===2&&pw.length<10)throw"Le mot de passe doit contenir au moins 10 caractères.";
-        let match=await pbk(pw,d.s,256)===d.h;if(!match&&d.v!==2)match=await pbk(enteredPw,d.s,256)===d.h;if(!match)throw"Identifiant ou mot de passe incorrect.";
+        if(enteredPw.trim().length<10)throw"Le mot de passe doit contenir au moins 10 caractères.";
+        const X=await tryLogin(d,enteredPw);if(!X)throw"Identifiant ou mot de passe incorrect.";
         const xp=expOf(d);if(xp&&Date.now()>xp)throw expMsg(xp);
-        const k=(await pbk(pw,d.s+":k",144)).slice(0,24);
-        const kd=(await pbk(pw,d.s+":d",144)).slice(0,24),ek=d.v===2?await pbk(pw,d.s+":enc",256):await pbk(k,"scolanova-enc-legacy:"+id,256);localStorage.setItem(KEY,JSON.stringify({id,nom:d.nom||"",k,kd,ek,hh:d.h,x:expOf(d),ty:d.type||"",t:Date.now()}));
+        const k=X.k,kd=X.kd,ek=X.ek,kt=X.kt;localStorage.setItem(KEY,JSON.stringify({id,nom:d.nom||"",k,kd,ek,kt,hh:d.h,x:expOf(d),ty:d.type||"",t:Date.now()}));
         db.sync=db.sync||{};db.sync.url=DB_URL;db.sync.key=k;
         close();drawBar();save();render();if(window.dsKick)window.dsKick();
+        if(d.v!==3)setTimeout(()=>window.licNotice("Votre accès date d’une ancienne version (mot de passe moins sûr). Demandez à votre fournisseur de le renouveler."),600);
       }catch(x){e(typeof x==="string"?x:"Une erreur est survenue. Réessayez.")}
       if(ov&&q("#lc_ok"))q("#lc_ok").disabled=false;
     };
@@ -2001,15 +2077,16 @@ prepLogo();
     <label>Nom de l’établissement (obligatoire)</label><input id="et_n" autocomplete="off">
     <label>Téléphone ou e-mail de contact (facultatif)</label><input id="et_c" autocomplete="off">
     <label>Identifiant (lettres minuscules, chiffres)</label><input id="et_u" autocapitalize="off" autocomplete="off">
-    <label>Mot de passe (10 caractères minimum, sensible aux majuscules et pouvant contenir des symboles)</label><input id="et_p" type="password" autocomplete="new-password" minlength="10">
+    <label>Mot de passe (10 caractères minimum, au moins 3 types parmi majuscules, minuscules, chiffres, symboles ; ou une phrase de 16 caractères ou plus ; sensible aux majuscules)</label><div style="display:flex;gap:6px"><input id="et_p" type="password" autocomplete="new-password" minlength="10" style="flex:1"><button type="button" id="et_g">Proposer</button></div>
     <div class="err" id="et_e" role="alert"></div><div class="btns"><button type="button" id="et_b">Retour</button><button type="button" class="ok" id="et_ok">Créer mon essai</button></div>`;
     const q=s=>box.querySelector(s),e=m=>{q("#et_e").textContent=m};
     q("#et_b").onclick=()=>show();
+    q("#et_g").onclick=()=>{const f=q("#et_p");f.type="text";f.value=genPwd()};
     q("#et_ok").onclick=async()=>{
-      const nom=q("#et_n").value.trim(),ct=q("#et_c").value.trim(),id=q("#et_u").value.trim().toLowerCase(),pw=String(q("#et_p").value||"");
+      const nom=q("#et_n").value.trim(),ct=q("#et_c").value.trim(),id=q("#et_u").value.trim().toLowerCase(),pw=String(q("#et_p").value||"").trim();
       if(nom.length<3)return e("Saisissez le nom de l’établissement.");
       if(!/^[a-z0-9._-]{3,30}$/.test(id))return e("Identifiant : 3 à 30 caractères, lettres minuscules, chiffres, point, tiret.");
-      if(pw.length<10)return e("Le mot de passe doit contenir au moins 10 caractères. Utilisez des majuscules, minuscules, chiffres et symboles.");
+      {const iss=pwdIssue(pw,id,nom);if(iss)return e(iss)}
       if(!DB_URL||!(window.crypto&&crypto.subtle))return e("Création impossible dans cet affichage. Ouvrez l’application depuis son adresse Internet.");
       e("Vérification de l’essai sur le serveur…");q("#et_ok").disabled=true;
       const reservationKeys=[];
@@ -2034,12 +2111,12 @@ prepLogo();
         }
         let r=await lic(id);
         if(r.ok&&await r.json())throw"Cet identifiant existe déjà. Choisissez-en un autre.";
-        const s=hex(crypto.getRandomValues(new Uint8Array(12))),h=await pbk(pw,s,256),created=Date.now();
-        const rec={actif:true,type:"essai",v:2,s,h,nom,cree:created,exp:created+ESSAI_JOURS*864e5,...(contactSeal?{contactEnc:contactSeal.data,contactIv:contactSeal.iv}:{})};
+        const s=hex(crypto.getRandomValues(new Uint8Array(16))),X=await derive(pw,{v:3,s,it:ITER_V3}),h=X.h,created=Date.now();
+        const rec={actif:true,type:"essai",v:3,s,it:ITER_V3,h,nom,cree:created,exp:created+ESSAI_JOURS*864e5,...(contactSeal?{contactEnc:contactSeal.data,contactIv:contactSeal.iv}:{})};
         r=await fetch(DB_URL+"/licences/"+encodeURIComponent(id)+".json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(rec)});
         if(!r.ok)throw"Création impossible pour le moment (code "+r.status+"). Contactez-nous sur WhatsApp.";
-        const k=(await pbk(pw,s+":k",144)).slice(0,24),kd=(await pbk(pw,s+":d",144)).slice(0,24),ek=await pbk(pw,s+":enc",256);
-        localStorage.setItem(KEY,JSON.stringify({id,nom,k,kd,ek,hh:h,x:rec.exp,ty:"essai",t:created}));
+        const k=X.k,kd=X.kd,ek=X.ek,kt=X.kt;
+        localStorage.setItem(KEY,JSON.stringify({id,nom,k,kd,ek,kt,hh:h,x:rec.exp,ty:"essai",t:created}));
         await Promise.all(reservationKeys.map(rk=>fetch(DB_URL+"/essai-registre/"+rk+".json",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({etat:"actif",exp:rec.exp})})));
         db.sync=db.sync||{};db.sync.url=DB_URL;db.sync.key=k;
         close();drawBar();if(window.licApplyName)window.licApplyName();save();render();if(window.dsKick)window.dsKick();
@@ -2068,11 +2145,14 @@ prepLogo();
   window.licApplyName=()=>{const n=window.licName();if(!n||typeof db==="undefined"||!db)return false;db.etab=db.etab||etabDef();if(db.etab.nom===n)return false;db.etab.nom=n;try{localStorage.setItem(LS,JSON.stringify(db))}catch(e){}return true};
   /* Clé de synchronisation complète : dérivée du mot de passe, jamais transmise aux enseignants */
   window.licKd=()=>{const l=get();return l&&l.kd?l.kd:""};
-  window.licEncKey=async()=>{const l=get();if(!l)return"";if(l.ek&&/^[0-9a-f]{64}$/i.test(l.ek))return l.ek;return l.k?await pbk(l.k,"scolanova-enc-legacy:"+l.id,256):""};
+  window.licEncKey=async()=>{const l=get();return l&&l.ek&&/^[0-9a-f]{64}$/i.test(l.ek)?l.ek:""};
+  /* ancienne clé de chiffrement (anciens accès) : sert uniquement à relire d’anciennes sauvegardes, qui sont rechiffrées avec la nouvelle clé à la prochaine synchronisation */
+  window.licEncKeyOld=async()=>{const l=get();return l&&l.k&&l.id?await pbk(l.k,"scolanova-enc-legacy:"+l.id,256):""};
+  window.licKt=()=>{const l=get();return l&&/^[0-9a-f]{64}$/i.test(l.kt||"")?l.kt:""};
   window.licSetKd=async pw=>{const l=get();if(!l||!l.id)throw"Accès non activé.";let r;try{r=await lic(l.id)}catch(e){throw"Connexion Internet requise."}
     if(!r.ok)throw"Vérification impossible (code "+r.status+").";const d=await r.json();if(!d||d.actif===false)throw"Accès désactivé.";
-    const p=d.v===2?String(pw||""):normPwd(pw);if(!p||await pbk(p,d.s,256)!==d.h)throw"Mot de passe incorrect.";
-    l.kd=(await pbk(p,d.s+":d",144)).slice(0,24);l.ek=d.v===2?await pbk(p,d.s+":enc",256):await pbk(l.k,"scolanova-enc-legacy:"+l.id,256);localStorage.setItem(KEY,JSON.stringify(l));return true};
+    const X=await tryLogin(d,pw);if(!X)throw"Mot de passe incorrect.";
+    l.kd=X.kd;l.ek=X.ek;l.kt=X.kt;l.k=X.k;localStorage.setItem(KEY,JSON.stringify(l));return true};
   window.licInfo=()=>{const l=get();return l?(l.nom||l.id)+" — activé":"non activé (mode découverte)"};
   drawBar();check();
   if(window.licApplyName())try{render()}catch(e){}
