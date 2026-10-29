@@ -326,7 +326,7 @@ let db,tab="menu",cur=null,q="",fc="",tmp=null,fillM=()=>{};
 const nextName=n=>{const k=db.classes.filter(c=>c.niveau===n).length;return cyc(n)===1?n+String.fromCharCode(65+k):n+(k+1)};
 function seed(){return{seq:1,classes:[],matieres:[],profs:[],eleves:[],notes:[],etab:etabDef()}}
 function load(){try{const r=localStorage.getItem(LS);if(r)return JSON.parse(r)}catch(e){}return seed()}
-function save(){try{const ln=window.licName&&window.licName();if(ln&&db&&db.etab&&db.etab.nom!==ln)db.etab.nom=ln}catch(e){}try{localStorage.setItem(LS,JSON.stringify(db))}catch(e){}if(ENS&&!ensBusy)ensPush();else if(!ENS&&db&&db.sync&&db.sync.key&&DB_URL&&window.licOK&&window.licOK())autoRef();dsMark()}
+function save(){if(window.__wipe)return;try{const ln=window.licName&&window.licName();if(ln&&db&&db.etab&&db.etab.nom!==ln)db.etab.nom=ln}catch(e){}try{localStorage.setItem(LS,JSON.stringify(db))}catch(e){}if(ENS&&!ensBusy)ensPush();else if(!ENS&&db&&db.sync&&db.sync.key&&DB_URL&&window.licOK&&window.licOK())autoRef();dsMark()}
 const OUTPUT_TABS=new Set(["bulletin","stats","examen","emploi","listes"]);
 function requireLicensedOutput(feature){
   if(typeof ENS!=="undefined"&&ENS)return true;
@@ -1332,6 +1332,50 @@ async function dsRun(dir){
   dsBusy=false;netBar()}
 function dsKick(){dsAsked=false;dsRun()}
 window.dsKick=dsKick;
+/* Boîte de dialogue simple : confirmation (Oui / Non) ou information (OK) */
+function lgDlg(title,text,yes,no){return new Promise(res=>{const d=document.createElement("dialog");d.style.cssText="max-width:380px;width:calc(100% - 32px);border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:18px";
+  const p=document.createElement("p");p.style.margin="0 0 8px";const bt=document.createElement("b");bt.textContent=title;p.append(bt);
+  const t=document.createElement("div");t.className="s";t.style.margin="0 0 14px";t.textContent=text;
+  const row=document.createElement("div");row.style.cssText="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap";
+  const f=v=>{d.close();d.remove();res(v)};
+  if(no){const n=document.createElement("button");n.type="button";n.className="btnline";n.textContent=no;n.onclick=()=>f(false);row.append(n)}
+  const y=document.createElement("button");y.type="button";y.className="btnline";y.style.cssText="background:var(--accent);color:var(--on-accent)";y.textContent=yes;y.onclick=()=>f(true);row.append(y);
+  d.append(p,t,row);d.oncancel=()=>f(false);document.body.appendChild(d);d.showModal()})}
+/*LOGOUT-BEGIN*/
+/* Déconnexion : les données sont d’abord enregistrées sur le serveur ; si l’envoi échoue, on reste connecté et RIEN n’est effacé. */
+async function seDeconnecter(){
+  if(ENS||window.__wipe||!(window.licConnecte&&window.licConnecte()))return;
+  if(!await lgDlg("Se déconnecter ?","Vos données vont d’abord être enregistrées sur le serveur, puis effacées de cet appareil. Un autre compte ne pourra pas y accéder. Pour les retrouver, reconnectez-vous avec votre mot de passe.","Oui, me déconnecter","Non, rester connecté"))return;
+  if(navigator.onLine===false||!DB_URL){await lgDlg("Connexion Internet requise","Vous êtes hors connexion : vos données ne peuvent pas être enregistrées sur le serveur. Reconnectez-vous à Internet puis réessayez. Vous restez connecté.","OK");return}
+  const b=$("#logout");if(b){b.disabled=true;b.textContent="Enregistrement des données…"}
+  try{
+    if(!(window.licKd()&&window.licKt()))await dsAskKd(true);
+    if(!(window.licKd()&&window.licKt()))throw new Error("pw");
+    for(let i=0;dsBusy&&i<75;i++)await new Promise(r=>setTimeout(r,200));
+    if(dsBusy)throw new Error("busy");
+    clearTimeout(dsT);
+    const rm=await fetch(dsUrl("dbm"));if(!rm.ok)throw new Error(String(rm.status));
+    const meta=await rm.json(),S=dsGet(),empty=!(db.classes.length||db.eleves.length||db.profs.length||db.notes.length),newer=!!(meta&&meta.t>S.base);
+    if(!empty){
+      if(!newer)await dsPush(meta);
+      else if(!(S.base&&!S.dirty)){const c=await dsChoice(meta);if(c==="keep")await dsPush(meta);else if(c==="server")dsBackup();else throw new Error("later")}
+    }
+  }catch(e){
+    if(b){b.disabled=false;b.textContent="🚪 Se déconnecter"}
+    const c=String(e&&e.message||"");
+    await lgDlg("Déconnexion annulée",
+      c==="pw"?"Saisissez le mot de passe de votre accès pour que vos données puissent être enregistrées sur le serveur avant la déconnexion. Vous restez connecté."
+      :c==="later"?"Vous avez choisi de décider plus tard. Vous restez connecté."
+      :c==="busy"?"Une synchronisation est en cours. Patientez un instant puis réessayez. Vous restez connecté."
+      :"Vos données n’ont pas pu être enregistrées sur le serveur"+(/^\d+$/.test(c)?" (code "+c+")":"")+". Vous restez connecté et rien n’a été effacé. Vérifiez votre connexion puis réessayez.","OK");
+    return}
+  /* données enregistrées sur le serveur (ou rien à envoyer) : on efface tout de cet appareil */
+  window.__wipe=true;
+  try{const ks=[];for(let i=0;i<localStorage.length;i++)ks.push(localStorage.key(i));
+    ks.forEach(k=>{if(k&&/^scolanova/i.test(k)&&k!=="scolanova-notes-chiffrees"&&!/^scolanova-gen/i.test(k))localStorage.removeItem(k)});
+    sessionStorage.clear();localStorage.setItem("scolanova-connexion-requise","1")}catch(e){}
+  location.reload()}
+/*LOGOUT-END*/
 function dsStatus(){
   if(!(window.licOK&&window.licOK()))return"Accès non activé : synchronisation indisponible.";
   if(!(window.licKd()&&window.licKt()))return"Saisissez votre mot de passe pour activer la synchronisation entre appareils.";
@@ -1339,7 +1383,7 @@ function dsStatus(){
   return(navigator.onLine===false?"Hors connexion · ":"")+(dsErr?"⚠ "+dsErr+" · ":"")+(S.dirty?"modifications en attente d’envoi.":h?"à jour (dernière synchronisation à "+h+").":"pas encore synchronisé.")}
 /* demande le mot de passe une fois (il ne sert qu'à calculer la clé, il n'est pas conservé) */
 function dsAskKd(force){return new Promise(res=>{
-  if(ENS||!(window.licOK&&window.licOK())||(window.licKd()&&window.licKt())||(dsKdAsked&&!force)||navigator.onLine===false)return res(false);dsKdAsked=true;
+  if(ENS||!(window.licConnecte&&window.licConnecte())||(!force&&window.licExpire&&window.licExpire())||(window.licKd()&&window.licKt())||(dsKdAsked&&!force)||navigator.onLine===false)return res(false);dsKdAsked=true;
   const d=document.createElement("dialog");d.style.cssText="max-width:360px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);padding:18px";
   d.innerHTML=`<p style="margin:0 0 8px"><b>Synchronisation entre appareils</b></p><p class="s" style="margin:0 0 10px">Pour retrouver vos données sur tous vos appareils, saisissez une fois le mot de passe de votre accès ScolaNova.</p><input id="dk_p" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off" placeholder="Mot de passe" style="width:100%"><div class="err" id="dk_e" role="alert" style="min-height:1.2em"></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button type="button" class="btnline" id="dk_n">Plus tard</button><button type="button" class="btnline" id="dk_y" style="background:var(--accent);color:var(--on-accent)">Activer</button></div>`;
   document.body.appendChild(d);const f=v=>{d.close();d.remove();res(v)};
@@ -1645,13 +1689,16 @@ function parcoursPlan(){
   return clSort(db.classes).map(C=>{
     const ann=annAll(C),n=C.niveau,ab=abandonList(C),abI=new Set((ab||[]).map(e=>e.id)),st=db.eleves.filter(e=>e.classe===C.classe&&!abI.has(e.id));
     const adm=[],aj=[],sm=[];
-    st.forEach(e=>{const a=ann.get(e.id);if(!a||a.v==null)sm.push(e);else if(a.v>=+C.passage)adm.push(e);else aj.push(e)});
+    /* 3e, Première et Terminale : l’admission est celle de l’examen national (BEPC, Probatoire, Bac 2), cochée dans l’onglet Examens, sans moyenne de passage ; les autres classes : moyenne annuelle ≥ moyenne de passage */
+    const ex=n==="3e"?"BEPC":/^Première/.test(n)?"Probatoire":/^Terminale/.test(n)?"Bac 2":"";let needEx="";
+    if(ex){if(db.nat&&db.nat[ex])st.forEach(e=>{if(e.nat&&e.nat[ex])adm.push(e);else aj.push(e)});else if(st.length)needEx=ex}
+    else st.forEach(e=>{const a=ann.get(e.id);if(!a||a.v==null)sm.push(e);else if(a.v>=+C.passage)adm.push(e);else aj.push(e)});
     let kind="up",opts=null,choice="",orient=null;
     if(PNEXT[n])choice=PNEXT[n];
     else if(n==="3e"){if(hasC2&&sec.length){kind="orient";orient={};opts=sec}else{kind="bepc";choice="bepc"}}
     else if(n==="Seconde S"){kind="choose";opts=[["","Ne pas déplacer"],["Première C","Première C"],["Première D","Première D"]]}
     else if(/^Terminale/.test(n)){kind="bac";choice="bac"}
-    return{C,adm,aj,sm,ab:ab||[],abKnown:ab!==null,kind,opts,choice,orient};
+    return{C,adm,aj,sm,ab:ab||[],abKnown:ab!==null,kind,opts,choice,orient,needEx};
   });
 }
 function parcoursApply(plan,doAb){
@@ -1667,7 +1714,7 @@ function parcoursApply(plan,doAb){
     if(p.kind==="choose"&&!p.choice)return;
     p.adm.forEach(e=>{
       if(p.kind==="orient"){const c=db.classes.find(x=>x.classe===p.orient[e.id]);if(c){e.classe=c.classe;e.statut="Nouveau";r.moved++}return}
-      if(p.choice==="bepc"||p.choice==="bac"){archivePush(e,p.choice==="bac"?"Admis au Bac 2":"Admis au BEPC");r.arch++}
+      if(p.choice==="bepc"||p.choice==="bac"){archivePush(e,p.choice==="bac"?"Diplômé du Bac 2":"Admis au BEPC");r.arch++}
       else{const t=target(p,p.choice);e.classe=t.classe;e.statut="Nouveau";r.moved++}
     });
     p.aj.forEach(e=>{e.statut="Redoublant";r.rep++});
@@ -1677,18 +1724,19 @@ function parcoursApply(plan,doAb){
 }
 function renderParcours(L){
   const arch=db.archives||[];
-  L.insertAdjacentHTML("beforeend",`<li class="bul" style="padding:14px 16px;margin-top:10px"><b>Mise à jour du parcours (fin d’année)</b><div class="s">Les élèves dont la moyenne annuelle atteint la moyenne de passage passent en classe supérieure (6e en 5e, 5e en 4e, 4e en 3e, Seconde en Première, Première en Terminale) et deviennent « Nouveau ». Les autres restent dans leur classe et deviennent « Redoublant ». Les élèves sans notes au dernier trimestre peuvent être archivés comme abandons. Les admis de Terminale (et de 3e, cycle 1 seul) sont archivés. Si l’établissement a les deux cycles, vous choisissez la série de chaque admis de 3e. Les notes de l’année sont effacées. Exportez d’abord une sauvegarde.</div><div style="display:grid;gap:8px;margin-top:8px"><button type="button" class="btnline" id="pc_p">Préparer la mise à jour</button><button type="button" class="btnline" id="pc_u" style="display:${localStorage.getItem(PKEY)?"":"none"}">Annuler la dernière mise à jour</button></div><div id="pc_v"></div><div class="s" id="pc_m" role="status" style="padding-top:6px">${esc(pcMsg)}</div><div class="s" style="padding-top:6px">Élèves archivés : ${arch.length} (recherchables dans l’onglet Élèves).</div></li>`);
+  L.insertAdjacentHTML("beforeend",`<li class="bul" style="padding:14px 16px;margin-top:10px"><b>Mise à jour du parcours (fin d’année)</b><div class="s">Les élèves dont la moyenne annuelle atteint la moyenne de passage passent en classe supérieure (6e en 5e, 5e en 4e, 4e en 3e, Seconde en Première) et deviennent « Nouveau ». Les autres restent dans leur classe et deviennent « Redoublant ». Les élèves sans notes au dernier trimestre peuvent être archivés comme abandons. En 3e, en Première et en Terminale, il n’y a pas de moyenne de passage : l’admission est celle de l’examen national (BEPC, Probatoire, Bac 2) coché dans l’onglet Examens, dont il faut enregistrer d’abord les résultats. Les diplômés du Bac 2 (et les admis de 3e, cycle 1 seul) sont archivés. Si l’établissement a les deux cycles, vous choisissez la série de chaque admis de 3e. Les notes de l’année sont effacées. Exportez d’abord une sauvegarde.</div><div style="display:grid;gap:8px;margin-top:8px"><button type="button" class="btnline" id="pc_p">Préparer la mise à jour</button><button type="button" class="btnline" id="pc_u" style="display:${localStorage.getItem(PKEY)?"":"none"}">Annuler la dernière mise à jour</button></div><div id="pc_v"></div><div class="s" id="pc_m" role="status" style="padding-top:6px">${esc(pcMsg)}</div><div class="s" style="padding-top:6px">Élèves archivés : ${arch.length} (recherchables dans l’onglet Élèves).</div></li>`);
   const m=t=>{$("#pc_m").textContent=t};
   $("#pc_p").onclick=()=>{
     pcMsg="";const plan=parcoursPlan();if(!plan.length)return m("Aucune classe.");
-    const nAb=plan.reduce((s,p)=>s+p.ab.length,0),dest=p=>p.opts&&p.kind==="choose"?`<select data-i="${plan.indexOf(p)}">${p.opts.map(o=>`<option value="${esc(o[0])}">${esc(o[1])}</option>`).join("")}</select>`:p.kind==="orient"?"Orientation ci-dessous":p.kind==="bac"?"Archivés : admis au Bac 2":p.kind==="bepc"?"Archivés : admis au BEPC":esc(p.choice+p.C.classe.slice(p.C.niveau.length));
+    const nAb=plan.reduce((s,p)=>s+p.ab.length,0),dest=p=>p.opts&&p.kind==="choose"?`<select data-i="${plan.indexOf(p)}">${p.opts.map(o=>`<option value="${esc(o[0])}">${esc(o[1])}</option>`).join("")}</select>`:p.kind==="orient"?"Orientation ci-dessous":p.kind==="bac"?"Archivés : diplômés du Bac 2":p.kind==="bepc"?"Archivés : admis au BEPC":esc(p.choice+p.C.classe.slice(p.C.niveau.length));
     const ori=plan.filter(p=>p.kind==="orient"&&p.adm.length).map(p=>`<div class="s" style="padding:10px 0 4px"><b>Orientation des admis de ${esc(p.C.classe)}</b> (série et classe de Seconde)</div>${p.opts.length?`<select data-bulk="${plan.indexOf(p)}"><option value="">Tous les élèves de la classe en : …</option>${p.opts.map(o=>`<option>${esc(o)}</option>`).join("")}</select>`:'<div class="s">Créez d’abord les classes de Seconde.</div>'}${p.adm.map(e=>`<div style="display:flex;gap:8px;align-items:center;padding:3px 0"><span class="s" style="flex:1">${esc(e.nom.toUpperCase()+" "+e.prenom)}</span><select data-o="${plan.indexOf(p)}|${e.id}"><option value="">— choisir —</option>${p.opts.map(o=>`<option>${esc(o)}</option>`).join("")}</select></div>`).join("")}`).join("");
-    $("#pc_v").innerHTML=`<div style="overflow-x:auto;margin-top:10px"><table class="st"><thead><tr><th>Classe</th><th>Admis</th><th>Ajournés</th><th>Abandons</th><th>Destination</th></tr></thead><tbody>${plan.map(p=>`<tr><td class="l">${esc(p.C.classe)}</td><td>${p.adm.length}</td><td>${p.aj.length}</td><td>${p.abKnown?p.ab.length:"—"}</td><td class="l">${dest(p)}</td></tr>`).join("")}</tbody></table></div>${ori}${nAb?`<label style="display:flex;gap:8px;align-items:center;padding-top:10px"><input type="checkbox" id="pc_ab" checked><span>Considérer comme abandons les ${nAb} élève(s) sans notes au dernier trimestre et les archiver</span></label>`:""}<div class="s" style="padding-top:6px">« — » : les notes du dernier trimestre ne sont pas encore saisies pour cette classe, aucun abandon n’est détecté. Une classe de destination qui n’existe pas est créée.</div><button type="button" class="ok" id="pc_a" style="width:100%;margin-top:8px">Appliquer la mise à jour</button>`;
+    $("#pc_v").innerHTML=`<div style="overflow-x:auto;margin-top:10px"><table class="st"><thead><tr><th>Classe</th><th>Admis</th><th>Ajournés</th><th>Abandons</th><th>Destination</th></tr></thead><tbody>${plan.map(p=>`<tr><td class="l">${esc(p.C.classe)}</td><td>${p.adm.length}</td><td>${p.aj.length}</td><td>${p.abKnown?p.ab.length:"—"}</td><td class="l">${p.needEx?"⚠ Résultats du "+esc(p.needEx)+" non enregistrés":dest(p)}</td></tr>`).join("")}</tbody></table></div>${ori}${nAb?`<label style="display:flex;gap:8px;align-items:center;padding-top:10px"><input type="checkbox" id="pc_ab" checked><span>Considérer comme abandons les ${nAb} élève(s) sans notes au dernier trimestre et les archiver</span></label>`:""}<div class="s" style="padding-top:6px">« — » : les notes du dernier trimestre ne sont pas encore saisies pour cette classe, aucun abandon n’est détecté. Une classe de destination qui n’existe pas est créée.</div><button type="button" class="ok" id="pc_a" style="width:100%;margin-top:8px">Appliquer la mise à jour</button>`;
     const V=$("#pc_v");
     V.querySelectorAll("select[data-i]").forEach(s=>s.onchange=()=>{plan[+s.dataset.i].choice=s.value});
     V.querySelectorAll("select[data-o]").forEach(s=>s.onchange=()=>{const[i,id]=s.dataset.o.split("|");plan[+i].orient[id]=s.value});
     V.querySelectorAll("select[data-bulk]").forEach(s=>s.onchange=()=>{const i=+s.dataset.bulk;V.querySelectorAll("select[data-o^='"+i+"|']").forEach(x=>{x.value=s.value;plan[i].orient[x.dataset.o.split("|")[1]]=s.value})});
     $("#pc_a").onclick=async()=>{
+      {const nx=plan.filter(p=>p.needEx);if(nx.length)return m("Enregistrez d’abord les résultats de l’examen national (onglet Examens, « résultats ») pour : "+nx.map(p=>p.C.classe+" ("+p.needEx+")").join(", ")+". Rien n’a été modifié.")}
       const miss=plan.reduce((s,p)=>s+(p.kind==="orient"?p.adm.filter(e=>!p.orient[e.id]).length:0),0);
       if(miss)return m("Choisissez la série de "+miss+" élève(s) admis de 3e avant d’appliquer.");
       const doAb=!!($("#pc_ab")&&$("#pc_ab").checked),n=plan.reduce((s,p)=>s+(p.kind==="choose"&&!p.choice?0:p.adm.length),0)+(doAb?nAb:0);
@@ -1763,8 +1811,8 @@ function openWipe(){const d=document.createElement("dialog");d.style.cssText="ma
 function renderMenu(){
   const L=$("#list");L.classList.add("plain");$("#tools").innerHTML="";
   const it=[["accueil","🏫","Établissement","Nom, logo, directeur, accès"],["classes","🏷️","Classes",db.classes.length+" classe(s)"],["matieres","📚","Matières",db.matieres.length+" matière(s)"],["profs","👨‍🏫","Professeurs",db.profs.length+" professeur(s)"],["eleves","🎓","Élèves",db.eleves.length+" élève(s)"],["notes","✍️","Saisie des notes","Par classe et matière"],["bulletin","📄","Bulletins","Affichage et PDF"],["stats","📊","Statistiques","Résultats par classe"],["examen","📝","Examens blancs","Notes et classement"],["emploi","🗓️","Emplois du temps","Génération et PDF"],["listes","📋","Listes de classe","Fiches de relevé de notes"]];
-  L.innerHTML='<li class="mg">'+it.map(i=>`<button type="button" class="mbtn" data-t="${i[0]}"><span class="mi">${i[1]}</span><b>${i[2]}</b><span class="s">${i[3]}</span></button>`).join("")+"</li>"+((window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone?"":'<li style="list-style:none;padding:18px 12px 0"><button type="button" class="btnline" id="pwa_btn" style="width:100%">📲 Installer l’application</button></li>')+'<li style="list-style:none;padding:18px 12px 4px"><button type="button" class="btnline" id="wipe" style="width:100%;border-color:#b3261e;color:#b3261e">🗑️ Effacer des données…</button></li>';
-  $("#wipe").onclick=openWipe;
+  L.innerHTML='<li class="mg">'+it.map(i=>`<button type="button" class="mbtn" data-t="${i[0]}"><span class="mi">${i[1]}</span><b>${i[2]}</b><span class="s">${i[3]}</span></button>`).join("")+"</li>"+((window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone?"":'<li style="list-style:none;padding:18px 12px 0"><button type="button" class="btnline" id="pwa_btn" style="width:100%">📲 Installer l’application</button></li>')+'<li style="list-style:none;padding:18px 12px 4px"><button type="button" class="btnline" id="wipe" style="width:100%;border-color:#b3261e;color:#b3261e">🗑️ Effacer des données…</button></li>'+(!ENS&&window.licConnecte&&window.licConnecte()?'<li style="list-style:none;padding:4px 12px 12px"><button type="button" class="btnline" id="logout" style="width:100%">🚪 Se déconnecter</button></li>':"");
+  $("#wipe").onclick=openWipe;if($("#logout"))$("#logout").onclick=seDeconnecter;
   if($("#pwa_btn"))$("#pwa_btn").onclick=()=>{if(window.pwaInstall)window.pwaInstall()};
   L.querySelectorAll(".mbtn").forEach(b=>b.onclick=()=>{const dest=b.dataset.t;if(OUTPUT_TABS.has(dest)&&!requireLicensedOutput(({bulletin:"les bulletins",stats:"les statistiques",examen:"les résultats d’examens",emploi:"les emplois du temps",listes:"les listes et documents PDF"})[dest]))return;tab=dest;q="";fc="";render();scrollTo(0,0)});
 }
@@ -1982,7 +2030,7 @@ prepLogo();
 /* Licence d'établissement : identifiant + mot de passe fournis par le développeur */
 (function(){
   if(typeof ENS!=="undefined"&&ENS)return;
-  const KEY="scolanova-lic";
+  const KEY="scolanova-lic",REQ="scolanova-connexion-requise";
   try{localStorage.removeItem("scolanova-auth");sessionStorage.removeItem("scolanova-ok")}catch(e){}
   const get=()=>{try{return JSON.parse(localStorage.getItem(KEY)||"null")}catch(e){return null}};
   const expOf=d=>{if(!d||d.exp==null||d.exp==="")return 0;const v=typeof d.exp==="number"?d.exp:Date.parse(String(d.exp).length<=10?d.exp+"T23:59:59":d.exp);return isFinite(v)?v:0};
@@ -2049,13 +2097,16 @@ function genPwd(){const A="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz2345678
   function close(){if(ov){ov.remove();ov=null}document.body.classList.remove("locked")}
   function show(msg){
     close();document.body.classList.add("locked");ov=document.createElement("div");ov.id="lock";
-    if(expired())msg=expMsg(get().x);
+    const must=expired()||(!get()&&localStorage.getItem(REQ)==="1");
+    if(expired())msg=expMsg(get().x)+" Vous ne pouvez plus utiliser ScolaNova avec cet accès. Si votre licence vient d’être renouvelée, saisissez votre identifiant et votre mot de passe ; sinon, déconnectez-vous : vos données seront enregistrées sur le serveur puis effacées de cet appareil.";
+    else if(must&&!msg)msg="Vous êtes déconnecté. Saisissez votre identifiant et votre mot de passe pour vous reconnecter.";
     ov.innerHTML=`<div class="lbox"><h2 style="margin:0 0 6px">Activer votre accès</h2><div class="s" style="margin-bottom:10px">${msg||"Pour enregistrer vos données, saisissez l’identifiant et le mot de passe remis par votre fournisseur ScolaNova. Pendant l’essai gratuit, vous pouvez saisir les classes, matières, professeurs, élèves et notes, puis consulter les bulletins à l’écran. Les statistiques et l’affichage des emplois du temps sont verrouillés ; l’export PDF et l’impression des bulletins sont désactivés. Une licence activée débloque ces fonctions."}</div>
     <label>Identifiant</label><input id="lc_u" autocapitalize="off" autocomplete="off"><label>Mot de passe</label><input id="lc_p" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="off">
     <a href="https://wa.me/22890535045?text=Bonjour%2C%20je%20souhaite%20obtenir%20mon%20identifiant%20et%20mon%20mot%20de%20passe%20d%E2%80%99activation%20de%20ScolaNova." target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;gap:9px;margin:12px 0;padding:11px;border-radius:9px;background:#25D366;color:#fff;text-decoration:none;font-weight:700"><svg width="23" height="23" viewBox="0 0 32 32" aria-hidden="true" style="fill:currentColor"><path d="M16 .8A15 15 0 0 0 3.1 23.5L1 31l7.7-2A15.1 15.1 0 1 0 16 .8zm0 27.4a12.3 12.3 0 0 1-6.3-1.7l-.5-.3-4.6 1.2 1.2-4.5-.3-.5A12.4 12.4 0 1 1 16 28.2zm6.8-9.2c-.4-.2-2.1-1-2.5-1.1-.3-.1-.6-.2-.8.2-.3.4-.9 1.1-1.1 1.3-.2.3-.4.3-.8.1-.4-.2-1.5-.6-2.9-1.8-1.1-1-1.8-2.1-2-2.5-.2-.4 0-.6.2-.8l.6-.7c.2-.2.3-.4.4-.6.1-.2 0-.5 0-.7-.1-.2-.8-1.9-1.1-2.6-.3-.7-.6-.6-.8-.6h-.7c-.2 0-.7.1-1 .5-.4.4-1.3 1.3-1.3 3.1s1.3 3.6 1.5 3.8c.2.3 2.6 4 6.2 5.5.9.4 1.6.6 2.1.7.9.3 1.7.2 2.3.1.7-.1 2.1-.9 2.4-1.8.3-.9.3-1.7.2-1.8-.1-.2-.3-.3-.7-.5z"/></svg>Nous contacter sur WhatsApp</a>
-    <div class="err" id="lc_e" role="alert"></div><div class="btns"><button type="button" id="lc_x">Plus tard</button>${get()?"":`<button type="button" id="lc_t">Créer un compte gratuitement</button>`}<button type="button" class="ok" id="lc_ok">Activer</button></div></div>`;
+    <div class="err" id="lc_e" role="alert"></div><div class="btns">${must?"":`<button type="button" id="lc_x">Plus tard</button>`}${expired()?`<button type="button" id="lc_d">Se déconnecter</button>`:""}${get()?"":`<button type="button" id="lc_t">Créer un compte gratuitement</button>`}<button type="button" class="ok" id="lc_ok">Activer</button></div></div>`;
     document.body.appendChild(ov);const q=s=>ov.querySelector(s),e=m=>{q("#lc_e").textContent=m};
-    q("#lc_x").onclick=close;
+    if(q("#lc_x"))q("#lc_x").onclick=close;
+    if(q("#lc_d"))q("#lc_d").onclick=()=>{if(typeof seDeconnecter==="function")seDeconnecter()};
     if(q("#lc_t"))q("#lc_t").onclick=()=>showEssai();
     q("#lc_ok").onclick=async()=>{
       const id=q("#lc_u").value.trim().toLowerCase(),enteredPw=String(q("#lc_p").value||"");
@@ -2069,7 +2120,7 @@ function genPwd(){const A="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz2345678
         if(enteredPw.trim().length<10)throw"Le mot de passe doit contenir au moins 10 caractères.";
         const X=await tryLogin(d,enteredPw);if(!X)throw"Identifiant ou mot de passe incorrect.";
         const xp=expOf(d);if(xp&&Date.now()>xp)throw expMsg(xp);
-        const k=X.k,kd=X.kd,ek=X.ek,kt=X.kt;localStorage.setItem(KEY,JSON.stringify({id,nom:d.nom||"",k,kd,ek,kt,hh:d.h,x:expOf(d),ty:d.type||"",t:Date.now()}));
+        const k=X.k,kd=X.kd,ek=X.ek,kt=X.kt;localStorage.setItem(KEY,JSON.stringify({id,nom:d.nom||"",k,kd,ek,kt,hh:d.h,x:expOf(d),ty:d.type||"",t:Date.now()}));localStorage.removeItem(REQ);
         db.sync=db.sync||{};db.sync.url=DB_URL;db.sync.key=k;
         close();drawBar();save();render();if(window.dsKick)window.dsKick();
         if(d.v!==3)setTimeout(()=>window.licNotice("Votre accès date d’une ancienne version (mot de passe moins sûr). Demandez à votre fournisseur de le renouveler."),600);
@@ -2124,7 +2175,7 @@ function genPwd(){const A="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz2345678
         r=await fetch(DB_URL+"/licences/"+encodeURIComponent(id)+".json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(rec)});
         if(!r.ok)throw"Création impossible pour le moment (code "+r.status+"). Contactez-nous sur WhatsApp.";
         const k=X.k,kd=X.kd,ek=X.ek,kt=X.kt;
-        localStorage.setItem(KEY,JSON.stringify({id,nom,k,kd,ek,kt,hh:h,x:rec.exp,ty:"essai",t:created}));
+        localStorage.setItem(KEY,JSON.stringify({id,nom,k,kd,ek,kt,hh:h,x:rec.exp,ty:"essai",t:created}));localStorage.removeItem(REQ);
         await Promise.all(reservationKeys.map(rk=>fetch(DB_URL+"/essai-registre/"+rk+".json",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({etat:"actif",exp:rec.exp})})));
         db.sync=db.sync||{};db.sync.url=DB_URL;db.sync.key=k;
         close();drawBar();if(window.licApplyName)window.licApplyName();save();render();if(window.dsKick)window.dsKick();
@@ -2145,7 +2196,14 @@ function genPwd(){const A="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz2345678
       const nn=d.nom?String(d.nom).trim():"";if(nn&&nn!==l.nom){l.nom=nn;localStorage.setItem(KEY,JSON.stringify(l))}
       if(window.licApplyName())render()}catch(e){}
   }
-  setTimeout(()=>{try{if(!get()&&DB_URL&&navigator.onLine&&!localStorage.getItem("scolanova-bienvenue")){localStorage.setItem("scolanova-bienvenue","1");show("Bienvenue sur ScolaNova. Essayez ScolaNova gratuitement pendant "+ESSAI_JOURS+" jours : saisie des notes et consultation des bulletins à l’écran. Les statistiques, l’affichage des emplois du temps, l’export PDF et l’impression des bulletins sont limités pendant l’essai. Créez l’accès de votre établissement ou saisissez vos identifiants.")}}catch(e){}},1500);
+  setTimeout(()=>{try{if(!get()&&DB_URL&&navigator.onLine&&!localStorage.getItem("scolanova-bienvenue")&&localStorage.getItem(REQ)!=="1"){localStorage.setItem("scolanova-bienvenue","1");show("Bienvenue sur ScolaNova. Essayez ScolaNova gratuitement pendant "+ESSAI_JOURS+" jours : saisie des notes et consultation des bulletins à l’écran. Les statistiques, l’affichage des emplois du temps, l’export PDF et l’impression des bulletins sont limités pendant l’essai. Créez l’accès de votre établissement ou saisissez vos identifiants.")}}catch(e){}},1500);
+  /* Accès expiré ou déconnecté : l'écran de connexion est obligatoire, même hors connexion et même en cours de session */
+  async function renew(){const l=get();if(!l||!DB_URL||!navigator.onLine)return;try{const r=await lic(l.id);if(!r.ok)return;const d=await r.json();if(!d||d.actif===false||d.h!==l.hh)return;const xp=expOf(d);if(xp&&xp!==l.x){l.x=xp;localStorage.setItem(KEY,JSON.stringify(l));if(!expired()){close();drawBar();try{render()}catch(e){}}}}catch(e){}}
+  const mustLock=()=>expired()||(!get()&&localStorage.getItem(REQ)==="1");
+  setTimeout(()=>{try{if(mustLock()&&!ov)show()}catch(e){}},400);
+  setInterval(()=>{try{if(!ov){if(mustLock())show()}else if(expired())renew()}catch(e){}},60000);
+  document.addEventListener("visibilitychange",()=>{try{if(!document.hidden&&mustLock()&&!ov)show()}catch(e){}});
+  window.licExpire=expired;
   window.licGate=()=>{if(ok())return false;if(!asked){asked=true;show()}return true};
   window.licOK=ok;window.licShow=show;
   /* Nom officiel de l'établissement activé (vient de l'enregistrement créé par le générateur d'accès) */
@@ -2162,6 +2220,8 @@ function genPwd(){const A="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz2345678
     const X=await tryLogin(d,pw);if(!X)throw"Mot de passe incorrect.";
     l.kd=X.kd;l.ek=X.ek;l.kt=X.kt;l.k=X.k;localStorage.setItem(KEY,JSON.stringify(l));return true};
   window.licInfo=()=>{const l=get();return l?(l.nom||l.id)+" — activé":"non activé (mode découverte)"};
+  /* vrai seulement si un compte est connecté : le bouton « Se déconnecter » n’apparaît que dans ce cas */
+  window.licConnecte=()=>{const l=get();return !!(l&&l.id&&l.k)};
   drawBar();check();
   if(window.licApplyName())try{render()}catch(e){}
 })();
