@@ -2049,7 +2049,7 @@ prepLogo();
   const expMsg=x=>{const l=get();return l&&l.ty==="essai"?"Votre essai gratuit s’est terminé le "+fd(x)+". Contactez votre fournisseur ScolaNova pour obtenir votre licence : vos données restent conservées.":"Votre licence a expiré le "+fd(x)+". Contactez votre fournisseur ScolaNova pour la renouveler : vos données restent conservées."};
   const ok=()=>{const l=get();return !!(l&&l.id&&l.k)&&!expired()};
   /* Signature du développeur (ECDSA P-256) : seule une licence signée est une vraie licence. La clé publique est intégrée par le générateur d’accès. Tant qu’elle est absente (null), l’ancien comportement est conservé. */
-  const LIC_PUB=/*LICPUB*/{"kty":"EC","crv":"P-256","x":"ForXj_IP_erAz_jcg_LV9Xc_k3aGbGCheGsHYkdV6Ss","y":"R4nZFnbp7u1Rg4CgMOIFOa_fQZHC26eGYoUyArEPkzE"}/*LICPUB-END*/;
+  const LIC_PUB=/*LICPUB*/{"kty":"EC","crv":"P-256","x":"gaE8utHQDXhVszZ0t-AmCDGRyJeSD9GPBjbz0x6ZNeI","y":"aQE7L5NRaEpt06RIlr2mOy3Ac1qIWriPaRHtGAIuxiQ"}/*LICPUB-END*/;
   let signedOK=false;
   const isTrial=()=>{const l=get();if(!l||expired())return false;if(l.ty==="essai")return true;if(!LIC_PUB)return false;return signedOK!==true};
   const normPwd=p=>String(p||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
