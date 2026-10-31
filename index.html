@@ -139,7 +139,7 @@ P.addImage=function(d,fmt,x,y,w,h){
   if(idx<0){this.imgs.push({src:src,u8:u8,inf:inf});idx=this.imgs.length-1}
   this._pg().push("q "+(w*K).toFixed(2)+" 0 0 "+(h*K).toFixed(2)+" "+(x*K).toFixed(2)+" "+((this.H-y-h)*K).toFixed(2)+" cm /Im"+(idx+1)+" Do Q");return this};
 function S(s){var u=new Uint8Array(s.length);for(var i=0;i<s.length;i++)u[i]=s.charCodeAt(i)&255;return u}
-P.output=function(type){
+P.output=function(type){if(!(window.snPdfOK&&window.snPdfOK())){if(window.snPdfDenied)window.snPdfDenied();throw new Error("PDF verrouillé")}
   var chunks=[],off=0,xref=[];function put(x){if(typeof x==="string")x=S(x);chunks.push(x);off+=x.length}
   function obj(n,body){xref[n]=off;put(n+" 0 obj\n");put(body);put("\nendobj\n")}
   var fk=Object.keys(this.fonts),np=this.pages.length,cn=fk.filter(function(k){return this.fonts[k].cf},this).length,base=4+fk.length+this.imgs.length+cn*2;
@@ -163,7 +163,7 @@ P.output=function(type){
   var all=new Uint8Array(off),pos=0;chunks.forEach(function(c){all.set(c,pos);pos+=c.length});
   return type==="blob"?new Blob([all],{type:"application/pdf"}):all.buffer;
 };
-P.save=function(name){var b=this.output("blob"),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name||"document.pdf";document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1500)};
+P.save=function(name){if(!(window.snPdfOK&&window.snPdfOK())){if(window.snPdfDenied)window.snPdfDenied();return}var b=this.output("blob"),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name||"document.pdf";document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1500)};
 /* ---------- autoTable ---------- */
 function pad(p,def){if(p==null)p=def;if(typeof p==="number")return{t:p,r:p,b:p,l:p};return{t:p.top!=null?p.top:def,r:p.right!=null?p.right:def,b:p.bottom!=null?p.bottom:def,l:p.left!=null?p.left:def}}
 function merge(){var o={};for(var i=0;i<arguments.length;i++){var a=arguments[i];if(a)for(var k in a)if(a[k]!==undefined)o[k]=a[k]}return o}
@@ -306,7 +306,7 @@ window.XLSX={
 </main>
 <button class="fab" id="add">+ Ajouter</button>
 <nav id="nav" role="tablist"></nav>
-<style>body:not(.ens) nav button{flex:0 0 auto;min-width:90px;padding-left:14px;padding-right:14px}[class*="netlify-badge"],[id*="netlify-badge"],a[href*="netlify.com"][style*="fixed"]{display:none!important}</style>
+<style>@media print{body.sn-noprint>*{display:none!important}body.sn-noprint::before{content:"Impression indisponible : licence ScolaNova requise.";display:block;padding:40px;font:700 18px sans-serif;text-align:center}}</style><style>body:not(.ens) nav button{flex:0 0 auto;min-width:90px;padding-left:14px;padding-right:14px}[class*="netlify-badge"],[id*="netlify-badge"],a[href*="netlify.com"][style*="fixed"]{display:none!important}</style>
 <script>(function(){const hide=()=>{document.querySelectorAll("body > *:not(main):not(nav):not(dialog):not(script):not(style):not(#add):not(#lock):not(#lic_bar)").forEach(el=>{if(/powered by\s*netlify/i.test(el.textContent||"")||/netlify/i.test(el.id+" "+el.className))el.style.setProperty("display","none","important")})};new MutationObserver(hide).observe(document.documentElement,{childList:true,subtree:true});document.addEventListener("DOMContentLoaded",hide);setTimeout(hide,1500)})()</script>
 <dialog id="dlg"><form class="f" id="form" novalidate><h2 id="dt"></h2><div id="fields"></div><div class="err" id="err" role="alert"></div><div class="btns"><button type="button" id="cancel">Annuler</button><button type="button" class="del" id="del">Supprimer</button><button type="submit" class="ok">Enregistrer</button></div></form></dialog>
 <dialog id="dlg3"><div class="f"><h2>Confirmer la modification</h2><p id="ct"></p><div class="btns"><button type="button" id="cn">Non, annuler</button><button type="button" class="ok" id="cy">Oui, modifier</button></div></div></dialog>
@@ -340,6 +340,11 @@ function requireLicensedOutput(feature){
   if(window.licShow)window.licShow("L’accès à « "+feature+" » est réservé aux établissements ayant activé leur licence. Vous pouvez continuer à saisir les classes, matières, professeurs, élèves et notes. Saisissez votre identifiant et votre mot de passe pour déverrouiller les fonctions de sortie.");
   return false;
 }
+/* Règle unique des sorties : PDF et impression autorisés seulement avec une licence activée (jamais en essai gratuit, ni sans accès) */
+window.snPdfOK=function(){try{if(typeof ENS!=="undefined"&&ENS)return true;return !!(window.licOK&&window.licOK()&&!(window.licTrial&&window.licTrial()))}catch(e){return false}};
+window.snPdfDenied=function(){try{var m="L’export PDF et l’impression sont réservés aux établissements ayant une licence activée. Pendant l’essai gratuit, les documents restent consultables à l’écran.";if(window.licNotice)window.licNotice(m);else alert(m)}catch(e){}};
+window.addEventListener("beforeprint",function(){if(!window.snPdfOK())document.body.classList.add("sn-noprint")});
+window.addEventListener("afterprint",function(){document.body.classList.remove("sn-noprint")});
 const cls=()=>db.classes.map(c=>c.classe).sort();
 const grp=ens=>{const g={};(ens||[]).forEach(k=>{const[m,c]=k.split("|");(g[m]=g[m]||[]).push(c)});return Object.entries(g).map(([m,c])=>m+" ("+c.sort().join(", ")+")").join(" · ")};
 const ENT={
@@ -658,7 +663,7 @@ function bindBonus(C){
   if(bonOpen)wire();
 }
 function relevePDF(C){
-  const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;
+  const J=window.jspdf&&window.jspdf.jsPDF;if(!J||!window.snPdfOK())return null;
   const doc=new J({unit:"mm",format:"a4"}),E=db.etab,R=releveData(C),body=[];
   R.forEach(o=>o.l.forEach((x,i)=>body.push([i?"":o.e.nom.toUpperCase()+" "+o.e.prenom,x.m,fmScore(x.s),"+"+fmScore(x.a),fmScore(x.n),i?"":"+"+fmScore(o.l.reduce((a,y)=>a+y.a,0)),i?"":fmScore(o.avant),i?"":fmScore(o.apres),i?"":o.motif])));
   doc.setFont("times","bold").setFontSize(12).text([E.nom||"","Relevé des bonifications du conseil de classe — Classe : "+C.classe+" — Année scolaire "+anneeSco()],105,14,{align:"center"});
@@ -710,7 +715,7 @@ function renderBulletin(){
   $("#bp1").onclick=()=>dlPDF(C,false);$("#bp2").onclick=()=>dlPDF(C,true);
 }
 function bulPDF(C,p,all){
-  const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;
+  const J=window.jspdf&&window.jspdf.jsPDF;if(!J||!window.snPdfOK())return null;
   const D=bulData(C,p),doc=new J({unit:"mm",format:"a4"}),E=db.etab,ann=annAll(C);
   (all?D.rows.map((_,i)=>i):[bst.i]).forEach((k,n)=>{
     if(n)doc.addPage();const M=bulModel(C,p,D,k);
@@ -807,7 +812,7 @@ function renderBulletin(){
   $("#bp1").onclick=()=>dlPDF(C,false);$("#bp2").onclick=()=>dlPDF(C,true);
 }
 function bulPDF(C,p,all){
-  const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;
+  const J=window.jspdf&&window.jspdf.jsPDF;if(!J||!window.snPdfOK())return null;
   const D=bulData(C,p),doc=new J({unit:"mm",format:"a4"}),E=db.etab,d=new Date().toLocaleDateString("fr-FR"),dc=fdate(E.dateConseil)||d;
   (all?D.rows.map((_,i)=>i):[bst.i]).forEach((k,n)=>{
     if(n)doc.addPage();const B=bulM2(C,p,D,k),M=B.M,e=M.r.e,ap=v=>v==null?"":appr(v);
@@ -876,7 +881,7 @@ function decisionConseil(e,C,p,ann){
   return moyenne>=seuil?"Passe en "+info.suivant:"Redouble la "+info.courant;
 }
 function examPDF(x){
-  const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;const doc=new J({unit:"mm",format:"a4"}),E=db.etab;
+  const J=window.jspdf&&window.jspdf.jsPDF;if(!J||!window.snPdfOK())return null;const doc=new J({unit:"mm",format:"a4"}),E=db.etab;
   doc.setFont("times","bold").setFontSize(11).text([E.nom||"","Résultat de l’examen blanc du "+x.type,"Session du "+x.session],105,14,{align:"center"});let y=34;
   xGroups(x).forEach(g=>{doc.setFont("times","bold").setFontSize(9).text(g.t,10,y);doc.autoTable({startY:y+2,theme:"grid",styles:{font:"times",fontStyle:"bold",fontSize:8,cellPadding:1,lineColor:0,lineWidth:.2,textColor:0,halign:"center",fillColor:255},margin:{left:10,right:10},columnStyles:{0:{halign:"left",cellWidth:48}},head:[["",{content:"RÉUSSITE",colSpan:3},{content:"ÉCHEC",colSpan:3}],["","Fille","Garçon","Total","Fille","Garçon","Total"]],body:reusRows(g.l,10).map(r=>r.map(String))});y=doc.lastAutoTable.finalY+8;if(y>255){doc.addPage();y=20}});
   return doc}
@@ -886,7 +891,7 @@ const rkS=r=>r?r.rk+(r.rk===1?"er":"e")+(r.ex?" ex":""):"";
 function xClass(x){const G=xGroups(x),gm=new Map(xRk(G[0].l).map(r=>[r.o.e.k,r]));return G.map((g,i)=>({t:g.t,gen:i===0,head:["Rang","Candidat","Sexe",i===0?"Établissement":"Rang gén.","Moy.","Résultat"],rows:xRk(g.l).map(r=>{const c=r.o.e,v=r.o.ref,f=sx(c.sexe)==="Féminin";return[rkS(r),(c.nom||"").toUpperCase()+" "+(c.prenom||""),c.sexe==="Féminin"?"F":c.sexe==="Masculin"?"M":"",i===0?c.etab:rkS(gm.get(c.k)),fm(v),v>=10?(f?"Admise":"Admis"):(f?"Ajournée":"Ajourné")]})}))}
 const clsT=g=>`<div class="s" style="padding:12px 0 4px"><b>${esc(g.t.replace(/^Général$/,"Classement général"))}</b></div><div style="overflow-x:auto"><table class="st"><thead><tr>${g.head.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${g.rows.map(r=>`<tr>${r.map((c,i)=>`<td${i===1||(i===3&&g.gen)?' class="l"':""}>${esc(c)}</td>`).join("")}</tr>`).join("")||'<tr><td colspan="6" class="l">Aucune note saisie.</td></tr>'}</tbody></table></div>`;
 function examClassPDF(x){
-  const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;const doc=new J({unit:"mm",format:"a4"}),E=db.etab;
+  const J=window.jspdf&&window.jspdf.jsPDF;if(!J||!window.snPdfOK())return null;const doc=new J({unit:"mm",format:"a4"}),E=db.etab;
   doc.setFont("times","bold").setFontSize(11).text([E.nom||"","Classement de l’examen blanc du "+x.type,"Session du "+x.session],105,14,{align:"center"});let y=34;
   xClass(x).forEach(g=>{if(y>250){doc.addPage();y=20}doc.setFont("times","bold").setFontSize(9).text(g.gen?"Classement général":g.t.replace(/^Établissement : /,"Classement de l’établissement : "),10,y);doc.autoTable({startY:y+2,theme:"grid",styles:{font:"times",fontStyle:"bold",fontSize:8,cellPadding:1,lineColor:0,lineWidth:.2,textColor:0,halign:"center",fillColor:255},margin:{left:10,right:10},columnStyles:{1:{halign:"left"},...(g.gen?{3:{halign:"left"}}:{})},head:[g.head],body:g.rows.length?g.rows:[["","Aucune note saisie.","","","",""]]});y=doc.lastAutoTable.finalY+8});
   doc.setFont("times","normal").setFontSize(7).text("ex = ex æquo · admis à partir de 10",10,287);
@@ -1079,7 +1084,7 @@ function renderEmploi(){
 }
 function edtPDF(kind){
   if(window.licTrial&&window.licTrial())return null;
-  const J=window.jspdf&&window.jspdf.jsPDF,res=db.edt.res;if(!J||!res)return null;
+  const J=window.jspdf&&window.jspdf.jsPDF,res=db.edt.res;if(!J||!res||!window.snPdfOK())return null;
   const doc=new J({unit:"mm",format:"a4",orientation:kind==="g"?"l":"p"}),E=db.etab,W=doc.internal.pageSize.getWidth(),PH=doc.internal.pageSize.getHeight(),H=[1,2,3,4,5,6,7];
   const st={font:"times",fontStyle:"bold",fontSize:10,cellPadding:2.4,lineColor:0,lineWidth:.25,textColor:0,halign:"center",valign:"middle",fillColor:255};
   const cs=clSort(db.classes).filter(c=>res.c[c.classe]),cell=(o,j,h)=>((o||{})[j+"-"+h]||[]).join(" - ");
@@ -1164,7 +1169,7 @@ function renderStats(){
 }
 function statPDF(C,p,v){
   if(window.licTrial&&window.licTrial())return null;
-  const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;
+  const J=window.jspdf&&window.jspdf.jsPDF;if(!J||!window.snPdfOK())return null;
   const S=statData(C,p),E=db.etab,doc=new J({unit:"mm",format:"a4",orientation:v==="s"?"l":"p"}),W=doc.internal.pageSize.getWidth();
   doc.setFont("times","bold").setFontSize(10).text([E.nom||"","Année scolaire "+anneeSco()],W/2,12,{align:"center"});
   const t=v==="s"?"Statistiques de la composition du "+p+" — Classe : "+C.classe:LV(S)[v][0]+" — "+p+" — Classe : "+C.classe+" (seuil "+fm(LV(S)[v][2])+")";
@@ -1181,6 +1186,7 @@ function statPDF(C,p,v){
   return doc;
 }
 async function saveDoc(doc,name,m){
+  if(!window.snPdfOK()){m("L’export PDF est réservé aux licences activées (désactivé pendant l’essai gratuit).");window.snPdfDenied();return}
   if(!doc)return m("Le module PDF n’a pas pu se charger.");
   let dl=null;try{dl=window.claude&&await window.claude.use("downloads")}catch(e){}
   if(!dl){try{doc.save(name.replace(/\s+/g,"-"));m("PDF prêt.")}catch(e){m("Le PDF n’a pas pu être enregistré.")}return}
@@ -1632,7 +1638,7 @@ function bulDraw(doc,S){
     L.forEach((s,i)=>{const yy=y0+i*lh+pt*.3528*.82,tw=doc.getTextWidth(s),xx=c.h==="l"?x+pad:c.h==="r"?x+w-pad-tw:x+(w-tw)/2;doc.text(s,xx,yy);if(c.u){doc.setLineWidth(.15);doc.line(xx,yy+.5,xx+tw,yy+.5)}})});
 }
 function bulPDF(C,p,all){
-  const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;
+  const J=window.jspdf&&window.jspdf.jsPDF;if(!J||!window.snPdfOK())return null;
   const D=bulData(C,p),doc=new J({unit:"mm",format:"a4"}),E=db.etab,d=new Date().toLocaleDateString("fr-FR"),dc=fdate(E.dateConseil)||d,ann=annAll(C);
   (all?D.rows.map((_,i)=>i):[bst.i]).forEach((k,n)=>{if(n)doc.addPage();bulDraw(doc,bulSpec(bulM2(C,p,D,k),C,p,E,ann,dc,d))});
   return doc;
@@ -1825,7 +1831,7 @@ function listeStats(els){
   const tot=row(""),red=row("Redoublant"),nou=row("Nouveau");
   return{tot:[n("","Masculin"),n("","Féminin"),els.length],red,nou}}
 function listePDF(C,kind,mat){
-  const J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;
+  const J=window.jspdf&&window.jspdf.jsPDF;if(!J||!window.snPdfOK())return null;
   const E=db.etab,an=anneeSco(),els=listeRows(C),land=kind!=="nom";
   const doc=new J({orientation:land?"l":"p",unit:"mm",format:"a4"}),W=doc.internal.pageSize.getWidth();
   const per=cyc(C.niveau)===1?["1er Trimestre","2e Trimestre","3e Trimestre"]:["1er Semestre","2e Semestre"];
@@ -1864,7 +1870,7 @@ function renderListes(){
   $("#lc").onchange=e=>{lst.c=e.target.value;lst.m="";render()};
   if($("#lm"))$("#lm").onchange=e=>{lst.m=e.target.value;render()};
   if(!C){L.innerHTML='<li class="hint" style="padding-left:16px">Choisissez une classe.</li>';return}
-  const go=(k)=>{const d=listePDF(C,k,lst.m);const m=$("#lmsg");if(!d){if(m)m.textContent="Le module PDF n’a pas pu se charger.";return}d.save(((k==="nom"?"Liste-":"Fiche-")+C.classe+(k==="fiche"&&lst.m?"-"+lst.m:"")+".pdf").replace(/\s+/g,"-"));if(m)m.textContent="PDF créé."};
+  const go=(k)=>{const m=$("#lmsg");if(!window.snPdfOK()){if(m)m.textContent="L’export PDF des listes et fiches est réservé aux licences activées (désactivé pendant l’essai gratuit).";window.snPdfDenied();return}const d=listePDF(C,k,lst.m);if(!d){if(m)m.textContent="Le module PDF n’a pas pu se charger.";return}d.save(((k==="nom"?"Liste-":"Fiche-")+C.classe+(k==="fiche"&&lst.m?"-"+lst.m:"")+".pdf").replace(/\s+/g,"-"));if(m)m.textContent="PDF créé."};
   $("#lp1").onclick=()=>go("fiche");$("#lp2").onclick=()=>go("nom");$("#lp3").onclick=()=>go("toutes");
   const els=listeRows(C),pr=lst.m?db.profs.find(p=>(p.ens||[]).includes(lst.m+"|"+C.classe)):null,per=cyc(C.niveau)===1?["1er Trimestre","2e Trimestre","3e Trimestre"]:["1er Semestre","2e Semestre"];
   const sub=per.map(()=>"<th>Int 1</th><th>Int 2</th><th>Dev</th><th>Comp</th>").join("");
@@ -2042,7 +2048,10 @@ prepLogo();
   const expired=()=>{const l=get();return !!(l&&l.x&&Date.now()>l.x)};
   const expMsg=x=>{const l=get();return l&&l.ty==="essai"?"Votre essai gratuit s’est terminé le "+fd(x)+". Contactez votre fournisseur ScolaNova pour obtenir votre licence : vos données restent conservées.":"Votre licence a expiré le "+fd(x)+". Contactez votre fournisseur ScolaNova pour la renouveler : vos données restent conservées."};
   const ok=()=>{const l=get();return !!(l&&l.id&&l.k)&&!expired()};
-  const isTrial=()=>{const l=get();return !!(l&&l.ty==="essai")&&!expired()};
+  /* Signature du développeur (ECDSA P-256) : seule une licence signée est une vraie licence. La clé publique est intégrée par le générateur d’accès. Tant qu’elle est absente (null), l’ancien comportement est conservé. */
+  const LIC_PUB=/*LICPUB*/{"kty":"EC","crv":"P-256","x":"ForXj_IP_erAz_jcg_LV9Xc_k3aGbGCheGsHYkdV6Ss","y":"R4nZFnbp7u1Rg4CgMOIFOa_fQZHC26eGYoUyArEPkzE"}/*LICPUB-END*/;
+  let signedOK=false;
+  const isTrial=()=>{const l=get();if(!l||expired())return false;if(l.ty==="essai")return true;if(!LIC_PUB)return false;return signedOK!==true};
   const normPwd=p=>String(p||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
   window.licTrial=isTrial;
   window.licNotice=msg=>{let n=document.getElementById("lic-notice");if(!n){n=document.createElement("div");n.id="lic-notice";n.setAttribute("role","status");n.style.cssText="position:fixed;z-index:99999;left:12px;right:12px;bottom:12px;padding:14px;border-radius:10px;background:#222;color:#fff;box-shadow:0 4px 18px #0005;font-size:14px";document.body.appendChild(n)}n.textContent=msg;clearTimeout(n._timer);n._timer=setTimeout(()=>n.remove(),6500)};
@@ -2091,6 +2100,8 @@ function genPwd(){const A="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz2345678
     if(/[a-z]/.test(r)&&/[A-Z]/.test(r)&&/[2-9]/.test(r)&&!pwdIssue(r,"",""))return r.match(/.{4}/g).join("-")}}
 /*LICX-END*/
   async function sealText(text,password,salt){const raw=fromHex(await pbk(password,salt,256)),key=await crypto.subtle.importKey("raw",raw,{name:"AES-GCM"},false,["encrypt"]),iv=crypto.getRandomValues(new Uint8Array(12)),data=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,new TextEncoder().encode(String(text)));return{iv:toB64(iv),data:toB64(new Uint8Array(data))}}
+  async function verifySig(){const l=get();let r=false;try{if(LIC_PUB&&l&&l.id&&l.hh&&l.sg&&l.ty!=="essai"){const k=await crypto.subtle.importKey("jwk",LIC_PUB,{name:"ECDSA",namedCurve:"P-256"},false,["verify"]);r=await crypto.subtle.verify({name:"ECDSA",hash:"SHA-256"},k,fromB64(l.sg),new TextEncoder().encode("sn1|"+l.id+"|"+l.hh))}}catch(e){r=false}const ch=r!==signedOK;signedOK=r;if(ch){try{render()}catch(e){}}return r}
+  window.licVerify=verifySig;
   const lic=id=>fetch(DB_URL+"/licences/"+encodeURIComponent(id)+".json");
   let bar=null,ov=null,asked=false;
   function drawBar(){if(bar){bar.remove();bar=null}}
@@ -2120,7 +2131,7 @@ function genPwd(){const A="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz2345678
         if(enteredPw.trim().length<10)throw"Le mot de passe doit contenir au moins 10 caractères.";
         const X=await tryLogin(d,enteredPw);if(!X)throw"Identifiant ou mot de passe incorrect.";
         const xp=expOf(d);if(xp&&Date.now()>xp)throw expMsg(xp);
-        const k=X.k,kd=X.kd,ek=X.ek,kt=X.kt;localStorage.setItem(KEY,JSON.stringify({id,nom:d.nom||"",k,kd,ek,kt,hh:d.h,x:expOf(d),ty:d.type||"",t:Date.now()}));localStorage.removeItem(REQ);
+        const k=X.k,kd=X.kd,ek=X.ek,kt=X.kt;localStorage.setItem(KEY,JSON.stringify({id,nom:d.nom||"",k,kd,ek,kt,hh:d.h,x:expOf(d),ty:d.type||"",sg:(typeof d.sig==="string"&&d.sig.length<=200?d.sig:""),t:Date.now()}));localStorage.removeItem(REQ);await verifySig();
         db.sync=db.sync||{};db.sync.url=DB_URL;db.sync.key=k;
         close();drawBar();save();render();if(window.dsKick)window.dsKick();
         if(d.v!==3)setTimeout(()=>window.licNotice("Votre accès date d’une ancienne version (mot de passe moins sûr). Demandez à votre fournisseur de le renouveler."),600);
@@ -2192,6 +2203,7 @@ function genPwd(){const A="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz2345678
     const l=get();if(!l||!DB_URL||!navigator.onLine)return;
     try{const r=await lic(l.id);if(!r.ok)return;const d=await r.json();
       if(!d||d.actif===false||d.h!==l.hh){localStorage.removeItem(KEY);drawBar();show("Votre accès n’est plus valide (désactivé ou renouvelé). Saisissez vos nouveaux identifiants ou contactez votre fournisseur.");return}
+      const sg=typeof d.sig==="string"&&d.sig.length<=200?d.sig:"";if((l.sg||"")!==sg){l.sg=sg;localStorage.setItem(KEY,JSON.stringify(l))}await verifySig();
       const xp=expOf(d);if((l.x||0)!==xp||(l.ty||"")!==(d.type||"")){l.x=xp;l.ty=d.type||"";localStorage.setItem(KEY,JSON.stringify(l))}if(xp&&Date.now()>xp){drawBar();show(expMsg(xp));return}
       const nn=d.nom?String(d.nom).trim():"";if(nn&&nn!==l.nom){l.nom=nn;localStorage.setItem(KEY,JSON.stringify(l))}
       if(window.licApplyName())render()}catch(e){}
@@ -2222,7 +2234,7 @@ function genPwd(){const A="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz2345678
   window.licInfo=()=>{const l=get();return l?(l.nom||l.id)+" — activé":"non activé (mode découverte)"};
   /* vrai seulement si un compte est connecté : le bouton « Se déconnecter » n’apparaît que dans ce cas */
   window.licConnecte=()=>{const l=get();return !!(l&&l.id&&l.k)};
-  drawBar();check();
+  drawBar();verifySig();check();
   if(window.licApplyName())try{render()}catch(e){}
 })();
 
