@@ -899,16 +899,27 @@ function examClassPDF(x){
 const xst={v:"l",id:null,s:"n",nt:""};
 /* ===== Examens blancs : saisie des notes par les enseignants (même lien, mêmes canaux chiffrés que les notes) ===== */
 const refExams=()=>db.exams.filter(x=>x.open===true).map(x=>({id:x.id,type:x.type,session:x.session,mats:xMats(x).map(m=>({n:m.n,c:m.c})),cands:xCands(x).map((c,i)=>({k:c.k,n:i+1,nom:c.nom,prenom:c.prenom,etab:c.etab}))}));
-const xRows=rows=>rows.map(r=>{const g=(...ks)=>{for(const k in r){const n=k.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();if(ks.some(z=>n.startsWith(z)))return String(r[k]??"").trim()}return""};return{nom:g("nom"),prenom:g("prenom"),sexe:g("sexe"),etab:g("etab")}}).filter(e=>e.nom||e.prenom);
-const xLines=t=>{const ln=String(t||"").split(/\r?\n/).map(l=>l.split(/\t|;/).map(c=>c.trim())).filter(c=>c[0]||c[1]);if(ln.length&&/^nom/i.test(ln[0][0]))ln.shift();return ln.map(c=>({nom:c[0]||"",prenom:c[1]||"",sexe:c[2]||"",etab:c[3]||""}))};
-const xCtl=x=>`<div class="box" style="margin-top:14px"><b>Saisie par les enseignants</b><div class="s">Le même lien enseignant (Menu, Synchronisation) donne accès aux notes et aux examens blancs : l’enseignant choisit l’examen et sa matière, puis note chaque candidat de la liste numérotée dans l’ordre alphabétique. Saisie actuellement : <b>${x.open===true?"ouverte":"fermée"}</b>.</div><div style="display:grid;gap:8px"><button type="button" class="btnline" id="xop">${x.open===true?"Fermer la saisie aux enseignants":"Ouvrir la saisie aux enseignants"}</button><button type="button" class="btnline" id="xsd">Envoyer la liste actuelle aux enseignants</button><button type="button" class="btnline" id="xrc">Récupérer les notes saisies</button></div><label>Ajouter des candidats d’autres établissements (une ligne par candidat : Nom ; Prénoms ; Sexe ; Établissement)</label><textarea id="xap" style="width:100%;min-height:70px"></textarea><label>ou un fichier Excel (colonnes Nom, Prénoms, Sexe, Établissement)</label><input type="file" id="xaf" accept=".xlsx,.xls,.csv"><button type="button" class="btnline" id="xadd">Ajouter ces candidats</button><div class="s" id="xam" role="status"></div></div>`;
+const xCtl=x=>`<div class="box" style="margin-top:14px"><div class="s">Envoyez la liste des candidats aux enseignants : ils ouvrent le lien, choisissent leur matière et saisissent les notes.</div><div style="display:grid;gap:8px"><button type="button" class="btnline" id="xsd">Envoyer la liste aux enseignants pour la saisie à distance des notes</button><input id="xlk" readonly style="display:none"><button type="button" class="btnline" id="xsh" style="display:none">Partager le lien</button><button type="button" class="btnline" id="xrc">Récupérer les notes saisies</button></div><div class="s" id="xam" role="status"></div></div>`;
 function xBind(x){
-  const m=t=>{const e=$("#xam");if(e)e.textContent=t};
-  const need=async()=>{if(!requireLicensedOutput("la synchronisation avec les enseignants"))return false;const S=db.sync||{};if(!(S.key&&DB_URL)){m("Créez d’abord le lien enseignant : Menu, Synchronisation, « Afficher le lien enseignant ».");return false}if(!(window.licKt&&window.licKt())){await dsAskKd(true);if(!(window.licKt&&window.licKt())){m("Saisissez de nouveau le mot de passe de votre accès pour activer le chiffrement.");return false}}return true};
-  if($("#xop"))$("#xop").onclick=()=>{x.open=!(x.open===true);save();renderExamen()};
-  if($("#xsd"))$("#xsd").onclick=async()=>{if(!await need())return;m("Envoi…");try{await syncRef();m(x.open===true?"Liste envoyée aux enseignants : "+xCands(x).length+" candidats, "+xMats(x).length+" matières.":"Liste envoyée, mais la saisie est fermée : ouvrez-la pour que les enseignants voient cet examen.")}catch(e){m("Échec de l’envoi. Vérifiez la connexion.")}};
-  if($("#xrc"))$("#xrc").onclick=async()=>{if(!await need())return;m("Récupération…");try{const n=await pullNotes();xst.s="n";renderExamen();m(n+" note(s) reçue(s).")}catch(e){m("Échec de la récupération. Vérifiez la connexion.")}};
-  if($("#xadd"))$("#xadd").onclick=()=>{const f=$("#xaf").files[0];const add=r=>{if(!r.length)return m("Aucun candidat reconnu.");x.ext=x.ext.concat(r);save();renderExamen();setTimeout(()=>m(r.length+" candidat(s) ajouté(s). Renvoyez la liste aux enseignants."),0)};if(f)return readXlsx(f,rows=>add(xRows(rows)),t=>m(String(t)));add(xLines($("#xap").value))};
+  const m=t=>{const e=$("#xam");if(e){e.textContent=t;e.scrollIntoView({block:"nearest"})}};
+  const need=async()=>{if(!requireLicensedOutput("la synchronisation avec les enseignants"))return false;if(!DB_URL){m("Adresse de la base absente.");return false}if(!(window.licKt&&window.licKt())){await dsAskKd(true);if(!(window.licKt&&window.licKt())){m("Saisissez de nouveau le mot de passe de votre accès pour activer le chiffrement.");return false}}return true};
+  if($("#xsd"))$("#xsd").onclick=async()=>{if(!await need())return;m("Envoi de la liste…");try{
+    const S=db.sync=db.sync||{url:DB_URL,key:""};S.url=DB_URL;
+    if(!/^[A-Za-z0-9_-]{20,64}$/.test(String(S.key||"")))S.key=Array.from(crypto.getRandomValues(new Uint8Array(12)),b=>b.toString(36).padStart(2,"0")).join("");
+    x.open=true;save();await syncRef();
+    /* le lien déjà partagé reste valable : on ne le remplace que s'il n'existe pas ou s'il expire bientôt */
+    let g="",exp=0;try{const cur=await syGet("teacherLink");if(cur&&typeof cur.token==="string"&&/^[0-9a-f]{48}$/.test(cur.token)&&Number.isFinite(cur.exp)&&Date.now()<cur.exp-36e5){g=cur.token;exp=cur.exp}}catch(e){}
+    if(!g){g=Array.from(crypto.getRandomValues(new Uint8Array(24)),b=>b.toString(16).padStart(2,"0")).join("");const created=Date.now();exp=created+7*864e5;await syPut("teacherLink",{token:g,created,exp})}
+    const o=$("#xlk");o.value=(APP_URL?APP_URL.replace(/\/$/,"")+"/":location.href.split("#")[0].split("?")[0])+"?ens="+encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify({k:S.key,g})))))+"#"+window.licKt();o.style.display="";$("#xsh").style.display="";
+    const ne=x.ext.length,nt=xCands(x).length;
+    m("Liste envoyée : "+nt+" candidat(s) ("+(nt-ne)+" de notre établissement, "+ne+" d’autres établissements), "+xMats(x).length+" matière(s). Lien valable jusqu’au "+new Date(exp).toLocaleDateString("fr-FR")+" : touchez « Partager le lien ».")
+  }catch(e){m("Impossible d’envoyer la liste. Vérifiez la connexion et les règles de la base.")}};
+  if($("#xsh"))$("#xsh").onclick=async()=>{const o=$("#xlk"),u=o.value;let ok=false;
+    if(navigator.share){try{await navigator.share({title:"ScolaNova — saisie des notes",text:u});ok=true}catch(e){if(e&&e.name==="AbortError")return}}
+    if(!ok&&navigator.clipboard&&window.isSecureContext){try{await navigator.clipboard.writeText(u);ok=true;m("Lien copié.")}catch(e){}}
+    if(!ok){try{o.focus();o.select();o.setSelectionRange(0,u.length);ok=document.execCommand("copy");if(ok)m("Lien copié.")}catch(e){}}
+    if(!ok)m("Copie automatique impossible : le lien est sélectionné, appuyez longuement dessus puis choisissez Copier.")};
+  if($("#xrc"))$("#xrc").onclick=async()=>{if(!await need())return;if(!(db.sync&&db.sync.key)){m("Envoyez d’abord la liste aux enseignants.");return}m("Récupération…");try{const n=await pullNotes();xst.s="n";renderExamen();m(n+" note(s) reçue(s).")}catch(e){m("Échec de la récupération. Vérifiez la connexion.")}};
 }
 const xe={id:null,m:""};
 const xnKey=(id,k,m)=>JSON.stringify([id,k,m]);
@@ -1296,9 +1307,9 @@ function markDirty(){dirty++;try{localStorage.setItem(PEND,String(Date.now()))}c
 function markClean(d0){if(d0!==dirty)return;const was=syncPending();try{localStorage.removeItem(PEND)}catch(e){}netBar(was?"ok":"")}
 function netBar(flash,ftxt){
   let b=document.getElementById("net_bar");const off=navigator.onLine===false,pend=syncPending()||dsPending();let txt="",bg="";
-  if(flash==="ok"){txt=ftxt||"✅ Données à jour.";bg="#e6f4ea";clearTimeout(nbT);nbT=setTimeout(()=>netBar(),3500)}
-  else if(off){txt="📴 Hors connexion : vous pouvez continuer à travailler tranquillement. Tout est enregistré sur cet appareil.";bg="#fff4e0"}
-  else if(pend){txt="🔄 Mise à jour en cours…";bg="#e8f0fe"}
+  if(flash==="ok"){txt=ftxt||"✅ Données synchronisées.";bg="#e6f4ea";clearTimeout(nbT);nbT=setTimeout(()=>netBar(),3500)}
+  else if(off){txt="📴 Hors connexion : vous pouvez continuer à travailler tranquillement. Tout est enregistré sur cet appareil"+(pend?" et la synchronisation est en attente de la connexion.":".");bg="#fff4e0"}
+  else if(pend){txt="🔄 Synchronisation des modifications en attente…";bg="#e8f0fe"}
   if(!txt){if(b)b.remove();return}
   if(!b){b=document.createElement("div");b.id="net_bar";b.setAttribute("role","status");document.body.insertBefore(b,document.body.firstChild)}
   b.style.cssText="position:sticky;top:0;z-index:20;padding:8px 14px;font:13px/1.35 system-ui,sans-serif;color:#1f2a44;border-bottom:1px solid rgba(0,0,0,.12);background:"+bg;b.textContent=txt}
@@ -1342,7 +1353,7 @@ async function dsPull(meta){
   const d=dsNorm(await dsUnpack(await r.json())),keep={sync:db.sync};
   dsApplying=true;try{db=d;db.sync=keep.sync;save()}finally{dsApplying=false}
   const S=dsGet();S.base=meta.t;S.dirty=false;S.last=Date.now();dsSet(S);
-  try{render()}catch(e){}netBar("ok","✅ Données mises à jour : "+db.eleves.length+" élève(s), "+db.classes.length+" classe(s).")}
+  try{render()}catch(e){}netBar("ok","✅ Données synchronisées : "+db.eleves.length+" élève(s), "+db.classes.length+" classe(s).")}
 async function dsPush(meta){
   const c0=dsChg,t=Math.max(Date.now(),(meta?meta.t:0)+1),pk=await dsPack(),dev=dsGet().dev||(()=>{const S=dsGet();S.dev=Math.random().toString(36).slice(2,10);dsSet(S);return S.dev})();
   const body={dbv:{t,by:dev,...pk},dbm:{t,by:dev,n:{c:db.classes.length,e:db.eleves.length,p:db.profs.length,o:db.notes.length}}};
@@ -1418,7 +1429,7 @@ function dsStatus(){
   if(!(window.licOK&&window.licOK()))return"Accès non activé : synchronisation indisponible.";
   if(!(window.licKd()&&window.licKt()))return"Saisissez votre mot de passe pour activer la synchronisation entre appareils.";
   const S=dsGet(),h=S.last?new Date(S.last).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):"";
-  return(navigator.onLine===false?"Hors connexion · ":"")+(dsErr?"⚠ "+dsErr+" · ":"")+(S.dirty?"mise à jour en attente.":h?"à jour (dernière synchronisation à "+h+").":"pas encore synchronisé.")}
+  return(navigator.onLine===false?"Hors connexion · ":"")+(dsErr?"⚠ "+dsErr+" · ":"")+(S.dirty?"modifications en attente de synchronisation.":h?"à jour (dernière synchronisation à "+h+").":"pas encore synchronisé.")}
 /* demande le mot de passe une fois (il ne sert qu'à calculer la clé, il n'est pas conservé) */
 function dsAskKd(force){return new Promise(res=>{
   if(ENS||!(window.licConnecte&&window.licConnecte())||(!force&&window.licExpire&&window.licExpire())||(window.licKd()&&window.licKt())||(dsKdAsked&&!force)||navigator.onLine===false)return res(false);dsKdAsked=true;
@@ -1429,7 +1440,7 @@ function dsAskKd(force){return new Promise(res=>{
   d.querySelector("#dk_y").onclick=async()=>{const e=d.querySelector("#dk_e");e.textContent="Vérification…";try{await window.licSetKd(d.querySelector("#dk_p").value);f(true);dsKick()}catch(x){e.textContent=typeof x==="string"?x:"Une erreur est survenue. Réessayez."}};
   d.showModal()})}
 function renderDbSync(L){
-  L.insertAdjacentHTML("beforeend",`<li class="bul" style="padding:14px 16px;margin-top:10px"><b>Synchronisation entre appareils</b><div class="s">Vos classes, élèves, professeurs, notes et emplois du temps sont gardés sur le serveur et retrouvés sur tout autre appareil activé avec le même accès.</div><div class="s" id="ds_st" role="status" style="padding-top:6px"></div><div style="display:grid;gap:8px;margin-top:8px"><button type="button" class="btnline" id="ds_now">Synchroniser maintenant</button><button type="button" class="btnline" id="ds_up">Envoyer ce téléphone vers le serveur</button><button type="button" class="btnline" id="ds_down">Récupérer les données du serveur</button></div></li>`);
+  L.insertAdjacentHTML("beforeend",`<li class="bul" style="padding:14px 16px;margin-top:10px"><b>Synchronisation entre appareils</b><div class="s">Vos classes, élèves, professeurs, notes et emplois du temps sont gardés sur le serveur et retrouvés sur tout autre appareil activé avec le même accès. Le travail fait hors connexion est synchronisé automatiquement au retour de la connexion.</div><div class="s" id="ds_st" role="status" style="padding-top:6px"></div><div style="display:grid;gap:8px;margin-top:8px"><button type="button" class="btnline" id="ds_now">Synchroniser maintenant</button><button type="button" class="btnline" id="ds_up">Envoyer ce téléphone vers le serveur</button><button type="button" class="btnline" id="ds_down">Récupérer les données du serveur</button></div></li>`);
   const st=$("#ds_st"),show=()=>{st.textContent=dsStatus()};show();
   const need=async()=>{if(!(window.licOK&&window.licOK())){window.licShow();return false}if(!(window.licKd()&&window.licKt())){const ok=await dsAskKd(true);show();return ok}return true};
   $("#ds_now").onclick=async()=>{if(!await need())return;dsAsked=false;st.textContent="Synchronisation…";await dsRun();show()};
@@ -1446,7 +1457,7 @@ async function pullNotes(){
     if(x.p==="EXB"){const mm=/^xb(\d+)-(.+)$/.exec(String(x.e)),ex=mm&&db.exams.find(y=>y.id===+mm[1]);if(ex&&ex.open===true&&xMats(ex).some(a=>a.n===x.m)&&xCands(ex).some(c=>c.k===mm[2])){if(x.cp!==undefined&&x.cp!==""){if(noteValide(x.cp)){const N=ex.notes[mm[2]]=ex.notes[mm[2]]||{};N[x.m]=String(x.cp).trim().replace(",",".");db.seen[k]=sig;n++}else badv++}else db.seen[k]=sig}return}
     let r=getN(x.e,x.m,x.p);if(!r){r={e:x.e,m:x.m,p:x.p,i1:"",i2:"",dv:"",cp:""};db.notes.push(r)}
     ["i1","i2","dv","cp"].forEach(f=>{if(x[f]!==undefined&&x[f]!==""){if(noteValide(x[f]))r[f]=x[f];else badv++}});db.seen[k]=sig;n++});
-  if(n){dsApplying=true;try{save()}finally{dsApplying=false}if(!(tab==="notes"&&nst.d)&&!(tab==="examen"&&document.activeElement&&document.activeElement.classList&&document.activeElement.classList.contains("ni")))render();setTimeout(()=>{const l=$("#lead");if(l)l.textContent=n+" note(s) reçue(s) des enseignants."},0)}
+  if(n){dsApplying=true;try{save()}finally{dsApplying=false}if(!(tab==="notes"&&nst.d)&&!(tab==="examen"&&document.activeElement&&document.activeElement.classList&&document.activeElement.classList.contains("ni"))&&!(tab==="examen"&&document.getElementById("xlk")&&document.getElementById("xlk").style.display===""))render();setTimeout(()=>{const l=$("#lead");if(l)l.textContent=n+" note(s) reçue(s) des enseignants."},0)}
   if(notesBad||badv)setTimeout(()=>{const l=$("#lead");if(l)l.textContent=(notesBad?notesBad+" note(s) ignorée(s) : non chiffrées ou non conformes. ":"")+(badv?badv+" valeur(s) hors de 0 à 20 reçue(s) des enseignants : ignorée(s). Demandez à l’enseignant de corriger et de renvoyer.":"")},0);
   try{await notesCleanup()}catch(e){}
   return n;
