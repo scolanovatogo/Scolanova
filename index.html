@@ -364,7 +364,7 @@ ENT.listes={h:"Listes de classe",lead:"Fiches de relevé de notes et listes nomi
 const ORDER=["accueil","classes","matieres","profs","eleves","notes","bulletin","stats","examen","emploi"];
 ENT.accueil={h:"Établissement",lead:"Renseignez l’établissement une seule fois : tout apparaît sur les bulletins.",need:()=>""};
 ENT.stats={h:"Stats",lead:"Statistiques de la composition, liste des admis et des ajournés.",need:()=>""};
-ENT.examen={h:"Examens",lead:"Examens blancs et résultats des examens nationaux.",need:()=>""};
+ENT.examen={h:"Examens",lead:"Examens blancs (avec saisie par les enseignants) et résultats des examens nationaux.",need:()=>""};
 ENT.emploi={h:"Emplois",lead:"Paramètres, génération et tableaux de service.",need:()=>""};
 ENT.bulletin={h:"Bulletins",lead:"Bulletin de chaque élève : moyennes, rangs, appréciations et mention.",need:()=>""};
 ENT.notes={h:"Notes",lead:"Notes par classe, période et matière : les moyennes se calculent seules.",need:()=>""};
@@ -1296,9 +1296,9 @@ function markDirty(){dirty++;try{localStorage.setItem(PEND,String(Date.now()))}c
 function markClean(d0){if(d0!==dirty)return;const was=syncPending();try{localStorage.removeItem(PEND)}catch(e){}netBar(was?"ok":"")}
 function netBar(flash,ftxt){
   let b=document.getElementById("net_bar");const off=navigator.onLine===false,pend=syncPending()||dsPending();let txt="",bg="";
-  if(flash==="ok"){txt=ftxt||"✅ Données synchronisées avec le serveur.";bg="#e6f4ea";clearTimeout(nbT);nbT=setTimeout(()=>netBar(),3500)}
-  else if(off){txt="📴 Hors connexion : vous pouvez continuer à travailler. Tout est enregistré sur cet appareil"+(pend?" et sera envoyé automatiquement dès le retour du réseau.":".");bg="#fff4e0"}
-  else if(pend){txt="🔄 Envoi des modifications en attente…";bg="#e8f0fe"}
+  if(flash==="ok"){txt=ftxt||"✅ Données à jour.";bg="#e6f4ea";clearTimeout(nbT);nbT=setTimeout(()=>netBar(),3500)}
+  else if(off){txt="📴 Hors connexion : vous pouvez continuer à travailler tranquillement. Tout est enregistré sur cet appareil.";bg="#fff4e0"}
+  else if(pend){txt="🔄 Mise à jour en cours…";bg="#e8f0fe"}
   if(!txt){if(b)b.remove();return}
   if(!b){b=document.createElement("div");b.id="net_bar";b.setAttribute("role","status");document.body.insertBefore(b,document.body.firstChild)}
   b.style.cssText="position:sticky;top:0;z-index:20;padding:8px 14px;font:13px/1.35 system-ui,sans-serif;color:#1f2a44;border-bottom:1px solid rgba(0,0,0,.12);background:"+bg;b.textContent=txt}
@@ -1342,7 +1342,7 @@ async function dsPull(meta){
   const d=dsNorm(await dsUnpack(await r.json())),keep={sync:db.sync};
   dsApplying=true;try{db=d;db.sync=keep.sync;save()}finally{dsApplying=false}
   const S=dsGet();S.base=meta.t;S.dirty=false;S.last=Date.now();dsSet(S);
-  try{render()}catch(e){}netBar("ok","✅ Données mises à jour depuis le serveur : "+db.eleves.length+" élève(s), "+db.classes.length+" classe(s).")}
+  try{render()}catch(e){}netBar("ok","✅ Données mises à jour : "+db.eleves.length+" élève(s), "+db.classes.length+" classe(s).")}
 async function dsPush(meta){
   const c0=dsChg,t=Math.max(Date.now(),(meta?meta.t:0)+1),pk=await dsPack(),dev=dsGet().dev||(()=>{const S=dsGet();S.dev=Math.random().toString(36).slice(2,10);dsSet(S);return S.dev})();
   const body={dbv:{t,by:dev,...pk},dbm:{t,by:dev,n:{c:db.classes.length,e:db.eleves.length,p:db.profs.length,o:db.notes.length}}};
@@ -1418,7 +1418,7 @@ function dsStatus(){
   if(!(window.licOK&&window.licOK()))return"Accès non activé : synchronisation indisponible.";
   if(!(window.licKd()&&window.licKt()))return"Saisissez votre mot de passe pour activer la synchronisation entre appareils.";
   const S=dsGet(),h=S.last?new Date(S.last).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):"";
-  return(navigator.onLine===false?"Hors connexion · ":"")+(dsErr?"⚠ "+dsErr+" · ":"")+(S.dirty?"modifications en attente d’envoi.":h?"à jour (dernière synchronisation à "+h+").":"pas encore synchronisé.")}
+  return(navigator.onLine===false?"Hors connexion · ":"")+(dsErr?"⚠ "+dsErr+" · ":"")+(S.dirty?"mise à jour en attente.":h?"à jour (dernière synchronisation à "+h+").":"pas encore synchronisé.")}
 /* demande le mot de passe une fois (il ne sert qu'à calculer la clé, il n'est pas conservé) */
 function dsAskKd(force){return new Promise(res=>{
   if(ENS||!(window.licConnecte&&window.licConnecte())||(!force&&window.licExpire&&window.licExpire())||(window.licKd()&&window.licKt())||(dsKdAsked&&!force)||navigator.onLine===false)return res(false);dsKdAsked=true;
@@ -1429,7 +1429,7 @@ function dsAskKd(force){return new Promise(res=>{
   d.querySelector("#dk_y").onclick=async()=>{const e=d.querySelector("#dk_e");e.textContent="Vérification…";try{await window.licSetKd(d.querySelector("#dk_p").value);f(true);dsKick()}catch(x){e.textContent=typeof x==="string"?x:"Une erreur est survenue. Réessayez."}};
   d.showModal()})}
 function renderDbSync(L){
-  L.insertAdjacentHTML("beforeend",`<li class="bul" style="padding:14px 16px;margin-top:10px"><b>Synchronisation entre appareils</b><div class="s">Vos classes, élèves, professeurs, notes et emplois du temps sont gardés sur le serveur et retrouvés sur tout autre appareil activé avec le même accès. Le travail fait hors connexion est envoyé automatiquement au retour du réseau.</div><div class="s" id="ds_st" role="status" style="padding-top:6px"></div><div style="display:grid;gap:8px;margin-top:8px"><button type="button" class="btnline" id="ds_now">Synchroniser maintenant</button><button type="button" class="btnline" id="ds_up">Envoyer ce téléphone vers le serveur</button><button type="button" class="btnline" id="ds_down">Récupérer les données du serveur</button></div></li>`);
+  L.insertAdjacentHTML("beforeend",`<li class="bul" style="padding:14px 16px;margin-top:10px"><b>Synchronisation entre appareils</b><div class="s">Vos classes, élèves, professeurs, notes et emplois du temps sont gardés sur le serveur et retrouvés sur tout autre appareil activé avec le même accès.</div><div class="s" id="ds_st" role="status" style="padding-top:6px"></div><div style="display:grid;gap:8px;margin-top:8px"><button type="button" class="btnline" id="ds_now">Synchroniser maintenant</button><button type="button" class="btnline" id="ds_up">Envoyer ce téléphone vers le serveur</button><button type="button" class="btnline" id="ds_down">Récupérer les données du serveur</button></div></li>`);
   const st=$("#ds_st"),show=()=>{st.textContent=dsStatus()};show();
   const need=async()=>{if(!(window.licOK&&window.licOK())){window.licShow();return false}if(!(window.licKd()&&window.licKt())){const ok=await dsAskKd(true);show();return ok}return true};
   $("#ds_now").onclick=async()=>{if(!await need())return;dsAsked=false;st.textContent="Synchronisation…";await dsRun();show()};
@@ -2278,6 +2278,8 @@ startPull();startSyncRetry();
 /* Application installable : tous navigateurs. Chrome/Edge/Brave/Opera/Samsung : fenêtre d’installation native ; les autres : marche à suivre adaptée au navigateur */
 (function(){
   if("serviceWorker"in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});
+var SN_BUILD="2026-11-01-exam";
+window.addEventListener("load",function(){setTimeout(function(){if(navigator.onLine===false)return;try{fetch(location.pathname+"?_v="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(t){var m=t.match(/SN_BUILD="(\d{4}-[0-9a-z-]+)"/);if(!m||m[1]===SN_BUILD)return;if(sessionStorage.getItem("sn-upd")===m[1])return;sessionStorage.setItem("sn-upd",m[1]);var p=[];if(window.caches)p.push(caches.keys().then(function(k){return Promise.all(k.map(function(x){return caches.delete(x)}))}));if(navigator.serviceWorker)p.push(navigator.serviceWorker.getRegistrations().then(function(r){return Promise.all(r.map(function(x){return x.unregister()}))}));Promise.all(p).then(function(){location.reload()})}).catch(function(){})}catch(e){}},4000)});
   var KEY="scolanova-pwa-plus-tard",ua=navigator.userAgent||"",standalone=(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true,bar=null;
   var iOS=/iphone|ipad|ipod/i.test(ua)||(/macintosh/i.test(ua)&&navigator.maxTouchPoints>1);
   var android=/android/i.test(ua),mobile=iOS||android||/mobile/i.test(ua);
