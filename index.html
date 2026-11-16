@@ -2187,9 +2187,9 @@ function genPwd(){const A="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz2345678
   }
   function showEssai(){
     const box=ov.querySelector(".lbox");
-    box.innerHTML=`<h2 style="margin:0 0 6px">Essai gratuit de ${ESSAI_JOURS} jours</h2><div class="s" style="margin-bottom:10px">Créez l’accès de votre établissement pendant ${ESSAI_JOURS} jours. Pendant l’essai, vous pouvez saisir les notes et consulter les bulletins à l’écran. Les statistiques et l’affichage des emplois du temps sont verrouillés ; l’export PDF et l’impression des bulletins sont désactivés. Le serveur vérifie le nom de l’établissement pour empêcher un second essai avec le même nom. Le contact est facultatif et peut être modifié.</div>
+    box.innerHTML=`<h2 style="margin:0 0 6px">Essai gratuit de ${ESSAI_JOURS} jours</h2><div class="s" style="margin-bottom:10px">Créez l’accès de votre établissement pendant ${ESSAI_JOURS} jours. Pendant l’essai, vous pouvez saisir les notes et consulter les bulletins à l’écran. Les statistiques et l’affichage des emplois du temps sont verrouillés ; l’export PDF et l’impression des bulletins sont désactivés. Le nom de l’établissement et le numéro de téléphone sont obligatoires pour créer le compte.</div>
     <label>Nom de l’établissement (obligatoire)</label><input id="et_n" autocomplete="off">
-    <label>Téléphone ou e-mail de contact (facultatif)</label><input id="et_c" autocomplete="off">
+    <label>Numéro de téléphone (obligatoire)</label><input id="et_tel" type="tel" inputmode="tel" autocomplete="tel" placeholder="Ex. : +228 90 00 00 00">
     <label>Identifiant (lettres minuscules, chiffres)</label><input id="et_u" autocapitalize="off" autocomplete="off">
     <label>Mot de passe (10 caractères minimum, au moins 3 types parmi majuscules, minuscules, chiffres, symboles ; ou une phrase de 16 caractères ou plus ; sensible aux majuscules)</label><div style="display:flex;gap:6px"><input id="et_p" type="password" autocomplete="new-password" minlength="10" style="flex:1"><button type="button" id="et_g">Proposer</button></div>
     <div class="err" id="et_e" role="alert"></div><div class="btns"><button type="button" id="et_b">Retour</button><button type="button" class="ok" id="et_ok">Créer mon essai</button></div>`;
@@ -2197,8 +2197,8 @@ function genPwd(){const A="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz2345678
     q("#et_b").onclick=()=>show();
     q("#et_g").onclick=()=>{const f=q("#et_p");f.type="text";f.value=genPwd()};
     q("#et_ok").onclick=async()=>{
-      const nom=q("#et_n").value.trim(),ct=q("#et_c").value.trim(),id=q("#et_u").value.trim().toLowerCase(),pw=String(q("#et_p").value||"").trim();
-      if(nom.length<3)return e("Saisissez le nom de l’établissement.");
+      const nom=q("#et_n").value.trim(),telephone=q("#et_tel").value.trim(),id=q("#et_u").value.trim().toLowerCase(),pw=String(q("#et_p").value||"").trim();
+      if(nom.length<3)return e("Saisissez le nom de l’établissement.");\n      const telNorm=telephone.replace(/[\\s().-]/g,"");\n      if(!/^\\+?[0-9]{8,15}$/.test(telNorm))return e("Saisissez un numéro de téléphone valide (8 à 15 chiffres).");
       if(!/^[a-z0-9._-]{3,30}$/.test(id))return e("Identifiant : 3 à 30 caractères, lettres minuscules, chiffres, point, tiret.");
       {const iss=pwdIssue(pw,id,nom);if(iss)return e(iss)}
       if(!DB_URL||!(window.crypto&&crypto.subtle))return e("Création impossible dans cet affichage. Ouvrez l’application depuis son adresse Internet.");
@@ -2209,7 +2209,7 @@ function genPwd(){const A="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz2345678
         if(!normNom)return e("Saisissez un nom d’établissement valide.");
         /* Le nom normalisé est la seule clé anti-double-essai. Le contact reste modifiable. */
         const identites=["nom|"+normNom];
-        const now=Date.now(),contactSeal=ct?await sealText(ct,pw,"scolanova-contact:"+id):null,reservation={id,cree:now,etat:"reservation",...(contactSeal?{contactEnc:contactSeal.data,contactIv:contactSeal.iv}: {})};
+        const now=Date.now(),reservation={id,identifiant:id,nom,telephone,cree:now,etat:"reservation"};
         for(const identite of identites){
           const dig=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(identite));
           const rk=hex(dig);
@@ -2226,7 +2226,7 @@ function genPwd(){const A="ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz2345678
         let r=await lic(id);
         if(r.ok&&await r.json())throw"Cet identifiant existe déjà. Choisissez-en un autre.";
         const s=hex(crypto.getRandomValues(new Uint8Array(16))),X=await derive(pw,{v:3,s,it:ITER_V3}),h=X.h,created=Date.now();
-        const rec={actif:true,type:"essai",v:3,s,it:ITER_V3,h,nom,cree:created,exp:created+ESSAI_JOURS*864e5,...(contactSeal?{contactEnc:contactSeal.data,contactIv:contactSeal.iv}:{})};
+        const rec={actif:true,type:"essai",v:3,s,it:ITER_V3,h,identifiant:id,nom,telephone,cree:created,exp:created+ESSAI_JOURS*864e5};
         r=await fetch(DB_URL+"/licences/"+encodeURIComponent(id)+".json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(rec)});
         if(!r.ok)throw"Création impossible pour le moment (code "+r.status+"). Contactez-nous sur WhatsApp.";
         const k=X.k,kd=X.kd,ek=X.ek,kt=X.kt;
